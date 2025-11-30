@@ -81,9 +81,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   
   /**
    * Loads theme when nursery changes
+   * Uses default theme immediately, then loads from API in background
    */
   useEffect(() => {
     if (nursery?.id) {
+      // Set default theme immediately for instant UI
+      setTheme(defaultTheme)
+      setIsWaiting(false)
+      
+      // Load actual theme in background
       refreshTheme(nursery.id)
     } else {
       setTheme(defaultTheme)

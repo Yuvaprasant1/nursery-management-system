@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { saplingApi } from './api/saplingApi'
 import { Sapling } from './models/types'
@@ -14,9 +13,10 @@ import { Input } from '@/components/Input'
 import { Pagination } from '@/components/Pagination/Pagination'
 import { PaginatedResponse } from '@/api/types'
 import { LoadingSpinner } from '@/components/Loading/LoadingSpinner'
-import { DEBOUNCE_DELAY, QUERY_KEYS } from '@/constants'
+import { DEBOUNCE_DELAY } from '@/constants'
 import { useDebounce } from '@/hooks/useDebounce'
 import { ButtonAction, ConfirmationVariant } from '@/enums'
+import { getErrorMessage } from '@/utils/errors'
 
 export default function SaplingsScreen() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -24,16 +24,52 @@ export default function SaplingsScreen() {
   const [pageSize, setPageSize] = useState(20)
   const debouncedSearchTerm = useDebounce(searchTerm, DEBOUNCE_DELAY)
   const router = useRouter()
-  const queryClient = useQueryClient()
   const { showConfirmation } = useConfirmationDialog()
   const toast = useToast()
   const { nursery } = useNursery()
+  const [isDeleting, setIsDeleting] = useState(false)
   
-  const { data: saplingsData, isLoading } = useQuery({
-    queryKey: [QUERY_KEYS.SAPLINGS, nursery?.id, debouncedSearchTerm, currentPage, pageSize],
-    queryFn: () => saplingApi.getAllSaplings(nursery?.id || '', debouncedSearchTerm, currentPage, pageSize),
-    enabled: !!nursery?.id,
-  })
+  // State for API data
+  const [saplingsData, setSaplingsData] = useState<Sapling[] | PaginatedResponse<Sapling> | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  
+  // Fetch saplings function (for manual refetch)
+  const fetchSaplings = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const data = await saplingApi.getAllSaplings(nursery.id, debouncedSearchTerm, currentPage, pageSize)
+      setSaplingsData(data)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to load saplings')
+      setError(error)
+      toast.error(getErrorMessage(error))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [nursery?.id, debouncedSearchTerm, currentPage, pageSize]) // Removed toast - it's stable
+  
+  // Fetch data when dependencies change - use direct dependencies
+  useEffect(() => {
+    if (!nursery?.id) return
+    
+    setIsLoading(true)
+    setError(null)
+    
+    saplingApi.getAllSaplings(nursery.id, debouncedSearchTerm, currentPage, pageSize)
+      .then(data => setSaplingsData(data))
+      .catch(err => {
+        const error = err instanceof Error ? err : new Error('Failed to load saplings')
+        setError(error)
+        toast.error(getErrorMessage(error))
+      })
+      .finally(() => setIsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id, debouncedSearchTerm, currentPage, pageSize]) // Direct dependencies, toast is stable
   
   // Check if response is paginated
   const isPaginated = saplingsData && 'content' in saplingsData
@@ -43,17 +79,6 @@ export default function SaplingsScreen() {
   const paginationData = isPaginated 
     ? (saplingsData as PaginatedResponse<Sapling>) 
     : null
-  
-  const deleteMutation = useMutation({
-    mutationFn: saplingApi.deleteSapling,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SAPLINGS] })
-      toast.success('Sapling deleted successfully')
-    },
-    onError: () => {
-      toast.error('Failed to delete sapling')
-    },
-  })
   
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await showConfirmation({
@@ -65,7 +90,16 @@ export default function SaplingsScreen() {
     })
     
     if (confirmed) {
-      deleteMutation.mutate(id)
+      setIsDeleting(true)
+      try {
+        await saplingApi.deleteSapling(id)
+        toast.success('Sapling deleted successfully')
+        fetchSaplings() // Refresh the list
+      } catch (error) {
+        toast.error(getErrorMessage(error) || 'Failed to delete sapling')
+      } finally {
+        setIsDeleting(false)
+      }
     }
   }
   
@@ -87,14 +121,13 @@ export default function SaplingsScreen() {
       </div>
       
       {/* Search Bar */}
-      <div className="max-w-md">
+      <div className="max-w-xs">
         <Input
           type="text"
-          placeholder="Search saplings by name or description..."
+          placeholder="Search saplings..."
           value={searchTerm}
           onChange={handleSearchChange}
-          className="w-full"
-          aria-label="Search saplings"
+          className="h-8 text-sm"
         />
       </div>
       
@@ -102,94 +135,68 @@ export default function SaplingsScreen() {
         <div className="flex items-center justify-center min-h-[400px]">
           <LoadingSpinner size="lg" />
         </div>
-      ) : !saplings || saplings.length === 0 ? (
-        <Card className="p-12">
-          <div className="text-center">
-            <p className="text-gray-600 text-lg mb-2">
-              {searchTerm ? 'No saplings found matching your search' : 'No saplings found'}
-            </p>
-            {searchTerm && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearchTerm('')
-                  setCurrentPage(0)
-                }}
-                className="mt-4"
-              >
-                Clear Search
-              </Button>
-            )}
-          </div>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {saplings.map((sapling: Sapling) => (
-            <Card 
-              key={sapling.id}
-              className="p-6 hover:shadow-lg transition-all duration-200 border border-gray-200 hover:border-primary/30 group overflow-hidden"
-            >
-              {sapling.imageUrl && (
-                <div className="mb-4 -mx-6 -mt-6">
-                  <img 
-                    src={sapling.imageUrl} 
-                    alt={sapling.name} 
-                    className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300" 
-                  />
+      ) : saplings && saplings.length > 0 ? (
+        <>
+          <div className="grid gap-4">
+            {saplings.map((sapling) => (
+              <Card key={sapling.id} className="p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">{sapling.name}</h3>
+                    {sapling.description && (
+                      <p className="text-sm text-gray-600 mt-1">{sapling.description}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/saplings/${sapling.id}`)}
+                    >
+                      View
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/saplings/${sapling.id}/edit`)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDelete(sapling.id, sapling.name)}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
+                    </Button>
+                  </div>
                 </div>
-              )}
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-primary transition-colors">
-                {sapling.name}
-              </h3>
-              {sapling.description && (
-                <p className="text-sm text-gray-600 mb-4 line-clamp-3 leading-relaxed">
-                  {sapling.description}
-                </p>
-              )}
-              <div className="flex gap-2 pt-4 border-t border-gray-100">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push(`/saplings/${sapling.id}`)}
-                  className="flex-1"
-                >
-                  View Details
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push(`/saplings/${sapling.id}/edit`)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(sapling.id, sapling.name)}
-                  disabled={deleteMutation.isPending}
-                >
-                  {deleteMutation.isPending ? ButtonAction.DELETING : ButtonAction.DELETE}
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-      
-      {/* Pagination */}
-      {isPaginated && paginationData && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={paginationData.totalPages}
-          totalElements={paginationData.totalElements}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setCurrentPage(0)
-          }}
-        />
+              </Card>
+            ))}
+          </div>
+          
+          {/* Pagination */}
+          {isPaginated && paginationData && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={paginationData.totalPages}
+              totalElements={paginationData.totalElements}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size)
+                setCurrentPage(0)
+              }}
+            />
+          )}
+        </>
+      ) : (
+        <Card>
+          <p className="text-gray-600 text-center py-8">
+            {searchTerm ? 'No saplings found matching your search' : 'No saplings found'}
+          </p>
+        </Card>
       )}
     </div>
   )

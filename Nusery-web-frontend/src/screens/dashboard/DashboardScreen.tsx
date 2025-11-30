@@ -1,28 +1,73 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useCallback } from 'react'
 import { dashboardApi } from './api/dashboardApi'
 import { Card } from '@/components/Card'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNursery } from '@/contexts/NurseryContext'
 import { TransactionType } from '@/enums'
 import { formatRelativeTime } from '@/utils/timeUtils'
+import { DashboardSummary, RecentTransaction } from './models/types'
 
 export default function DashboardScreen() {
   const { user } = useAuth()
   const { nursery } = useNursery()
   
-  const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: ['dashboard-summary', nursery?.id],
-    queryFn: () => dashboardApi.getSummary(nursery!.id),
-    enabled: !!nursery?.id,
-  })
+  // State for summary API data
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
   
-  const { data: recentTransactions, isLoading: transactionsLoading } = useQuery({
-    queryKey: ['dashboard-recent-transactions', nursery?.id],
-    queryFn: () => dashboardApi.getRecentTransactions(nursery!.id),
-    enabled: !!nursery?.id,
-  })
+  // State for recent transactions API data
+  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[] | null>(null)
+  const [transactionsLoading, setTransactionsLoading] = useState(false)
+  
+  // Fetch summary function (for manual refetch)
+  const fetchSummary = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    setSummaryLoading(true)
+    try {
+      const data = await dashboardApi.getSummary(nursery.id)
+      setSummary(data)
+    } catch (err) {
+      console.error('Failed to load dashboard summary:', err)
+    } finally {
+      setSummaryLoading(false)
+    }
+  }, [nursery?.id])
+  
+  // Fetch recent transactions function (for manual refetch)
+  const fetchRecentTransactions = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    setTransactionsLoading(true)
+    try {
+      const data = await dashboardApi.getRecentTransactions(nursery.id)
+      setRecentTransactions(data)
+    } catch (err) {
+      console.error('Failed to load recent transactions:', err)
+    } finally {
+      setTransactionsLoading(false)
+    }
+  }, [nursery?.id])
+  
+  // Fetch data when component mounts or nursery changes - use direct dependencies
+  useEffect(() => {
+    if (!nursery?.id) return
+    
+    setSummaryLoading(true)
+    dashboardApi.getSummary(nursery.id)
+      .then(data => setSummary(data))
+      .catch(err => console.error('Failed to load dashboard summary:', err))
+      .finally(() => setSummaryLoading(false))
+    
+    setTransactionsLoading(true)
+    dashboardApi.getRecentTransactions(nursery.id)
+      .then(data => setRecentTransactions(data))
+      .catch(err => console.error('Failed to load recent transactions:', err))
+      .finally(() => setTransactionsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id]) // Direct dependencies
 
   return (
     <div className="space-y-6">
@@ -165,4 +210,3 @@ export default function DashboardScreen() {
     </div>
   )
 }
-

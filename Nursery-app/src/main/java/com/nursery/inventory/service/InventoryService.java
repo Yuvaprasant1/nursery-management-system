@@ -10,8 +10,8 @@ import java.util.List;
 import com.google.cloud.firestore.Transaction;
 
 public interface InventoryService {
-    List<InventoryResponseDTO> findAll(String nurseryId);
-    PaginatedResponseDTO<InventoryResponseDTO> findAllPaginated(String nurseryId, PageRequest pageRequest);
+    List<InventoryResponseDTO> findAll(String nurseryId, String search);
+    PaginatedResponseDTO<InventoryResponseDTO> findAllPaginated(String nurseryId, String search, PageRequest pageRequest);
     InventoryResponseDTO findByBreedId(String breedId);
     InventoryDocument getOrCreate(String breedId);
     InventoryDocument getOrCreate(String breedId, Transaction transaction);

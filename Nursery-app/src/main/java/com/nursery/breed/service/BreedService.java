@@ -9,8 +9,8 @@ import com.nursery.common.firestore.pagination.PageRequest;
 import java.util.List;
 
 public interface BreedService {
-    List<BreedResponseDTO> findAll(String nurseryId, String saplingId);
-    PaginatedResponseDTO<BreedResponseDTO> findAllPaginated(String nurseryId, String saplingId, PageRequest pageRequest);
+    List<BreedResponseDTO> findAll(String nurseryId, String saplingId, String search);
+    PaginatedResponseDTO<BreedResponseDTO> findAllPaginated(String nurseryId, String saplingId, String search, PageRequest pageRequest);
     BreedResponseDTO findById(String id);
     BreedResponseDTO create(BreedRequestDTO request);
     BreedResponseDTO update(String id, BreedRequestDTO request);

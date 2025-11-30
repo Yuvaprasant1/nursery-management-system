@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { breedApi } from './api/breedApi'
+import { saplingApi } from '@/screens/saplings/api/saplingApi'
 import { SaplingFilter } from '@/components/Filter/SaplingFilter'
 import { Sapling } from '@/screens/saplings/models/types'
 import { useConfirmationDialog } from '@/components/ConfirmationDialog/useConfirmationDialog'
@@ -16,7 +16,7 @@ import { ErrorState } from '@/components/Error/ErrorState'
 import { Skeleton } from '@/components/Loading/Skeleton'
 import { Pagination } from '@/components/Pagination/Pagination'
 import { PaginatedResponse } from '@/api/types'
-import { QUERY_KEYS, ROUTES, DEBOUNCE_DELAY } from '@/constants'
+import { ROUTES, DEBOUNCE_DELAY } from '@/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { useDebounce } from '@/hooks/useDebounce'
 import { ButtonAction, ConfirmationVariant } from '@/enums'
@@ -29,19 +29,90 @@ export default function BreedsScreen() {
   const [pageSize, setPageSize] = useState(20)
   const debouncedSearchTerm = useDebounce(searchTerm, DEBOUNCE_DELAY)
   const router = useRouter()
-  const queryClient = useQueryClient()
   const { showConfirmation } = useConfirmationDialog()
   const toast = useToast()
   const { nursery } = useNursery()
+  const [isDeleting, setIsDeleting] = useState(false)
   
-  const { data: breedsData, isLoading, error, refetch, isError } = useQuery({
-    queryKey: [QUERY_KEYS.BREEDS, nursery?.id, selectedSapling?.id, currentPage, pageSize],
-    queryFn: () => breedApi.getBreeds(nursery?.id || '', selectedSapling?.id || null, currentPage, pageSize),
-    retry: 1,
-    enabled: !!nursery?.id,
-    staleTime: 0,
-    refetchOnMount: true,
-  })
+  // State for breeds API data
+  const [breedsData, setBreedsData] = useState<Breed[] | PaginatedResponse<Breed> | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  
+  // State for saplings API data
+  const [saplingsData, setSaplingsData] = useState<Sapling[] | PaginatedResponse<Sapling> | null>(null)
+  
+  // Fetch breeds function (for manual refetch)
+  const fetchBreeds = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const data = await breedApi.getBreeds(nursery.id, selectedSapling?.id || null, currentPage, pageSize, debouncedSearchTerm)
+      setBreedsData(data)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to load breeds')
+      setError(error)
+      toast.error(getErrorMessage(error))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [nursery?.id, selectedSapling?.id, currentPage, pageSize, debouncedSearchTerm]) // Removed toast - it's stable
+  
+  // Fetch saplings function (for manual refetch)
+  const fetchSaplings = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    try {
+      const data = await saplingApi.getAllSaplings(nursery.id)
+      setSaplingsData(data)
+    } catch (err) {
+      // Silently fail for saplings - not critical for main functionality
+      console.error('Failed to load saplings:', err)
+    }
+  }, [nursery?.id])
+  
+  // Reset to first page when search term changes
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [debouncedSearchTerm])
+  
+  // Fetch data when dependencies change - use direct dependencies
+  useEffect(() => {
+    if (!nursery?.id) return
+    
+    setIsLoading(true)
+    setError(null)
+    
+    breedApi.getBreeds(nursery.id, selectedSapling?.id || null, currentPage, pageSize, debouncedSearchTerm)
+      .then(data => setBreedsData(data))
+      .catch(err => {
+        const error = err instanceof Error ? err : new Error('Failed to load breeds')
+        setError(error)
+        toast.error(getErrorMessage(error))
+      })
+      .finally(() => setIsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id, selectedSapling?.id, currentPage, pageSize, debouncedSearchTerm]) // Direct dependencies, toast is stable
+  
+  useEffect(() => {
+    if (!nursery?.id) return
+    
+    saplingApi.getAllSaplings(nursery.id)
+      .then(data => setSaplingsData(data))
+      .catch(err => console.error('Failed to load saplings:', err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id]) // Direct dependencies
+  
+  // Extract saplings array from response
+  const saplings: Sapling[] = useMemo(() => {
+    if (!saplingsData) return []
+    if (Array.isArray(saplingsData)) return saplingsData
+    if ('content' in saplingsData) return saplingsData.content
+    return []
+  }, [saplingsData])
   
   // Check if response is paginated
   const isPaginated = breedsData && 'content' in breedsData
@@ -54,29 +125,6 @@ export default function BreedsScreen() {
     setCurrentPage(0)
   }
   
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      // Check if breed has transactions before deleting
-      const hasTransactions = await breedApi.checkHasTransactions(id)
-      if (hasTransactions) {
-        throw new Error('Cannot delete breed with existing transactions')
-      }
-      return breedApi.deleteBreed(id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.BREEDS] })
-      toast.success('Breed deleted successfully')
-    },
-    onError: (error) => {
-      const errorMessage = getErrorMessage(error)
-      if (errorMessage.includes('transactions')) {
-        toast.error('Cannot delete breed with existing transactions')
-      } else {
-        toast.error(errorMessage || 'Failed to delete breed')
-      }
-    },
-  })
-  
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await showConfirmation({
       title: 'Delete Breed?',
@@ -87,166 +135,143 @@ export default function BreedsScreen() {
     })
     
     if (confirmed) {
-      deleteMutation.mutate(id)
+      setIsDeleting(true)
+      try {
+        // Check if breed has transactions before deleting
+        const hasTransactions = await breedApi.checkHasTransactions(id)
+        if (hasTransactions) {
+          toast.error('Cannot delete breed with existing transactions')
+          return
+        }
+        await breedApi.deleteBreed(id)
+        toast.success('Breed deleted successfully')
+        fetchBreeds() // Refresh the list
+      } catch (error) {
+        // Error is handled by Axios interceptor
+      } finally {
+        setIsDeleting(false)
+      }
     }
   }
   
-  // Client-side filtering for search (since backend doesn't support search for breeds)
-  const filteredBreeds = useMemo(() => {
-    if (!breeds || breeds.length === 0) return []
-    const term = debouncedSearchTerm.toLowerCase().trim()
-    if (!term) return breeds
-    return breeds.filter(breed =>
-      breed.name.toLowerCase().includes(term) ||
-      breed.description?.toLowerCase().includes(term)
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Breeds</h1>
+        </div>
+        <div className="grid gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+      </div>
     )
-  }, [breeds, debouncedSearchTerm])
-  
-  // Reset to first page when search changes
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value)
-    setCurrentPage(0)
   }
   
-  if (isError) {
+  if (error) {
     return (
       <ErrorState
         title="Failed to load breeds"
         message={getErrorMessage(error)}
-        onRetry={() => refetch()}
+        onRetry={fetchBreeds}
       />
     )
   }
   
-
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold text-gray-900">Breeds</h1>
-        <Button 
-          onClick={() => router.push(`${ROUTES.BREEDS}/new`)}
-          aria-label="Add new breed"
-          className="shadow-md hover:shadow-lg transition-shadow"
-        >
-          Add Breed
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Breeds</h1>
+        <Button onClick={() => router.push(ROUTES.BREEDS + '/new')}>
+          Add New Breed
         </Button>
       </div>
       
-      {/* Search Bar with Filter */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="flex-1 max-w-md">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 max-w-xs">
           <Input
-            type="text"
-            placeholder="Search breeds by name or description..."
+            placeholder="Search breeds..."
             value={searchTerm}
-            onChange={handleSearchChange}
-            className="w-full"
-            aria-label="Search breeds"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 text-sm"
           />
         </div>
-        <div className="w-full sm:w-auto sm:min-w-[200px]">
-          <SaplingFilter
-            selectedSapling={selectedSapling}
-            onSelect={handleSaplingSelect}
-            compact
-          />
-        </div>
+        <SaplingFilter
+          selectedSapling={selectedSapling}
+          onSelect={handleSaplingSelect}
+          saplings={saplings}
+        />
       </div>
       
-      {/* Content */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="p-6 animate-pulse">
-              <Skeleton className="h-6 w-3/4 mb-3" />
-              <Skeleton className="h-4 w-full mb-2" />
-              <Skeleton className="h-4 w-2/3 mb-6" />
-              <div className="flex gap-2">
-                <Skeleton className="h-9 flex-1" />
-                <Skeleton className="h-9 w-20" />
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : filteredBreeds.length === 0 ? (
-        <Card className="p-12">
-          <div className="text-center">
-            <p className="text-gray-600 text-lg mb-2">
-              {searchTerm ? 'No breeds found matching your search' : 'No breeds found'}
-            </p>
-            {searchTerm && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSearchTerm('')}
-                className="mt-4"
-              >
-                Clear Search
-              </Button>
-            )}
-          </div>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBreeds.map((breed) => (
-            <Card 
-              key={breed.id} 
-              className="flex flex-col p-6 hover:shadow-lg transition-all duration-200 border border-gray-200 hover:border-primary/30 group"
-            >
-              <div className="flex-1 mb-4">
-                <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-primary transition-colors">
-                  {breed.name}
-                </h3>
-                {breed.description && (
-                  <p className="text-sm text-gray-600 mb-4 line-clamp-3 leading-relaxed">
-                    {breed.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <span>
-                    Updated: {new Date(breed.updatedAt).toLocaleDateString()}
-                  </span>
+      {breeds.length > 0 ? (
+        <>
+          <div className="grid gap-4">
+            {breeds.map((breed) => (
+              <Card key={breed.id} className="p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">{breed.name}</h3>
+                    {breed.description && (
+                      <p className="text-sm text-gray-600 mt-1">{breed.description}</p>
+                    )}
+                    <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                      <span>Mode: {breed.mode || 'INDIVIDUAL'}</span>
+                      {breed.mode === 'SLOT' && breed.itemsPerSlot && (
+                        <span>Items per slot: {breed.itemsPerSlot}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`${ROUTES.BREEDS}/${breed.id}`)}
+                    >
+                      View
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`${ROUTES.BREEDS}/${breed.id}/edit`)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDelete(breed.id, breed.name)}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2 mt-auto pt-4 border-t border-gray-100">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push(`${ROUTES.BREEDS}/${breed.id}`)}
-                  className="flex-1"
-                  aria-label={`View details for ${breed.name}`}
-                >
-                  View Details
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(breed.id, breed.name)}
-                  disabled={deleteMutation.isPending}
-                  aria-label={`Delete ${breed.name}`}
-                >
-                  {deleteMutation.isPending ? ButtonAction.DELETING : ButtonAction.DELETE}
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-      
-      {/* Pagination */}
-      {isPaginated && paginationData && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={paginationData.totalPages}
-          totalElements={paginationData.totalElements}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setCurrentPage(0)
-          }}
-        />
+              </Card>
+            ))}
+          </div>
+          
+          {/* Pagination */}
+          {isPaginated && paginationData && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={paginationData.totalPages}
+              totalElements={paginationData.totalElements}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size)
+                setCurrentPage(0)
+              }}
+            />
+          )}
+        </>
+      ) : (
+        <Card>
+          <p className="text-gray-600 text-center py-8">
+            {searchTerm ? 'No breeds found matching your search' : 'No breeds found'}
+          </p>
+        </Card>
       )}
     </div>
   )

@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useMemo, ReactNode } from 'react'
+import { useState, useMemo, ReactNode, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { transactionApi } from './api/transactionApi'
 import { breedApi } from '@/screens/breeds/api/breedApi'
 import { inventoryApi } from '@/screens/inventory/api/inventoryApi'
@@ -17,31 +16,71 @@ import { LoadingSpinner } from '@/components/Loading/LoadingSpinner'
 import { getErrorMessage } from '@/utils/errors'
 import { ButtonAction, ConfirmationVariant, TransactionType } from '@/enums'
 import { Transaction } from './models/types'
-import { QUERY_KEYS } from '@/constants'
 import { formatDateTime } from '@/utils/timeUtils'
 import { cn } from '@/utils/cn'
-
 export default function TransactionsScreen() {
   const [currentPage, setCurrentPage] = useState(0)
   const [pageSize, setPageSize] = useState(20)
   const router = useRouter()
-  const queryClient = useQueryClient()
   const { showConfirmation } = useConfirmationDialog()
   const toast = useToast()
   const { nursery } = useNursery()
+  const [isDeleting, setIsDeleting] = useState(false)
   
-  const { data: transactionsData, isLoading } = useQuery({
-    queryKey: [QUERY_KEYS.TRANSACTIONS, nursery?.id, currentPage, pageSize],
-    queryFn: () => transactionApi.getTransactions(undefined, nursery?.id, currentPage, pageSize),
-    enabled: !!nursery?.id,
-  })
+  // State for transactions API data
+  const [transactionsData, setTransactionsData] = useState<Transaction[] | PaginatedResponse<Transaction> | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   
-  // Fetch breeds to get breed names
-  const { data: breedsData } = useQuery({
-    queryKey: [QUERY_KEYS.BREEDS, nursery?.id],
-    queryFn: () => breedApi.getBreeds(nursery?.id || ''),
-    enabled: !!nursery?.id,
-  })
+  // State for breeds API data
+  const [breedsData, setBreedsData] = useState<any>(null)
+  
+  // Fetch transactions function (for manual refetch)
+  const fetchTransactions = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    setIsLoading(true)
+    try {
+      const data = await transactionApi.getTransactions(undefined, nursery.id, currentPage, pageSize)
+      setTransactionsData(data)
+    } catch (err) {
+      toast.error(getErrorMessage(err) || 'Failed to load transactions')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [nursery?.id, currentPage, pageSize]) // Removed toast from dependencies - it's stable
+
+  // Fetch breeds function
+  const fetchBreeds = useCallback(async () => {
+    if (!nursery?.id) return
+    
+    try {
+      const data = await breedApi.getBreeds(nursery.id)
+      setBreedsData(data)
+    } catch (err) {
+      console.error('Failed to load breeds:', err)
+    }
+  }, [nursery?.id])
+  
+  // Fetch data when dependencies change - use direct dependencies to prevent multiple calls
+  useEffect(() => {
+    if (!nursery?.id) return
+    
+    setIsLoading(true)
+    transactionApi.getTransactions(undefined, nursery.id, currentPage, pageSize)
+      .then(data => setTransactionsData(data))
+      .catch(err => toast.error(getErrorMessage(err) || 'Failed to load transactions'))
+      .finally(() => setIsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id, currentPage, pageSize]) // Direct dependencies, toast is stable and doesn't need to be in deps
+  
+  useEffect(() => {
+    if (!nursery?.id) return
+    
+    breedApi.getBreeds(nursery.id)
+      .then(data => setBreedsData(data))
+      .catch(err => console.error('Failed to load breeds:', err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id]) // Direct dependencies
   
   // Create breed name map
   const breedNameMap = useMemo(() => {
@@ -70,18 +109,6 @@ export default function TransactionsScreen() {
   const paginationData = isPaginated 
     ? (transactionsData as PaginatedResponse<Transaction>) 
     : null
-  
-  const deleteMutation = useMutation({
-    mutationFn: transactionApi.softDeleteTransaction,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TRANSACTIONS] })
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.INVENTORY] })
-      toast.success('Transaction deleted successfully')
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error) || 'Failed to delete transaction')
-    },
-  })
   
   const handleDelete = async (id: string) => {
     try {
@@ -156,10 +183,19 @@ export default function TransactionsScreen() {
       })
       
       if (confirmed) {
-        deleteMutation.mutate(id)
+        setIsDeleting(true)
+        try {
+          await transactionApi.softDeleteTransaction(id)
+          toast.success('Transaction deleted successfully')
+          fetchTransactions() // Refresh the list
+        } catch (error) {
+          // Error is handled by Axios interceptor
+        } finally {
+          setIsDeleting(false)
+        }
       }
     } catch (error) {
-      toast.error(getErrorMessage(error) || 'Failed to load transaction details')
+      // Error is handled by Axios interceptor
     }
   }
 
@@ -237,9 +273,9 @@ export default function TransactionsScreen() {
                                 variant="danger"
                                 size="sm"
                                 onClick={() => handleDelete(transaction.id)}
-                                disabled={deleteMutation.isPending}
+                                disabled={isDeleting}
                               >
-                                {deleteMutation.isPending ? ButtonAction.DELETING : ButtonAction.DELETE}
+                                {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
                               </Button>
                             )}
                           </div>
@@ -275,4 +311,3 @@ export default function TransactionsScreen() {
     </div>
   )
 }
-

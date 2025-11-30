@@ -5,14 +5,23 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNursery } from '@/contexts/NurseryContext'
+import { ROUTES } from '@/constants'
 
 interface LayoutProps {
   children: ReactNode
 }
 
+interface MenuItem {
+  path: string
+  label: string
+  icon: string
+  children?: MenuItem[]
+}
+
 export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set())
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
@@ -31,17 +40,44 @@ export default function Layout({ children }: LayoutProps) {
     localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed))
   }, [sidebarCollapsed])
 
+  // Auto-expand admin menu if on admin route
+  useEffect(() => {
+    if (pathname.startsWith('/admin')) {
+      setExpandedMenus(prev => new Set(prev).add('/admin'))
+    }
+  }, [pathname])
+
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed)
   }
+
+  const toggleMenu = (path: string) => {
+    setExpandedMenus(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(path)) {
+        newSet.delete(path)
+      } else {
+        newSet.add(path)
+      }
+      return newSet
+    })
+  }
   
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },
     { path: '/inventory', label: 'Inventory', icon: '📦' },
     { path: '/saplings', label: 'Sapling', icon: '🌱' },
     { path: '/breeds', label: 'Breeds', icon: '🌿' },
     { path: '/transactions', label: 'Transactions', icon: '💰' },
-    { path: '/theme', label: 'Theme Settings', icon: '🎨' },
+    {
+      path: '/admin',
+      label: 'Admin',
+      icon: '⚙️',
+      children: [
+        { path: ROUTES.ADMIN_NURSERY, label: 'Nursery', icon: '🏢' },
+        { path: ROUTES.ADMIN_THEME, label: 'Theme Settings', icon: '🎨' },
+      ],
+    },
   ]
   
   const handleLogout = async () => {
@@ -50,7 +86,30 @@ export default function Layout({ children }: LayoutProps) {
   }
   
   const isActive = (path: string) => {
-    return pathname === path
+    return pathname === path || pathname.startsWith(path + '/')
+  }
+
+  const getPageTitle = () => {
+    // Check for exact match first
+    const exactMatch = menuItems.find(item => item.path === pathname)
+    if (exactMatch) return exactMatch.label
+
+    // Check child items
+    for (const item of menuItems) {
+      if (item.children) {
+        const childMatch = item.children.find(child => child.path === pathname)
+        if (childMatch) return childMatch.label
+      }
+    }
+
+    // Check if it's an admin route
+    if (pathname.startsWith('/admin')) {
+      if (pathname === ROUTES.ADMIN_NURSERY) return 'Nursery'
+      if (pathname === ROUTES.ADMIN_THEME) return 'Theme Settings'
+      return 'Admin'
+    }
+
+    return 'Dashboard'
   }
   
   return (
@@ -112,25 +171,86 @@ export default function Layout({ children }: LayoutProps) {
           
           <nav className="flex-1 overflow-y-auto p-4">
             <ul className="space-y-2">
-              {menuItems.map((item) => (
-                <li key={item.path}>
-                  <Link
-                    href={item.path}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 ${
-                      sidebarCollapsed ? 'justify-center' : ''
-                    } ${
-                      isActive(item.path)
-                        ? 'bg-primary text-white shadow-md'
-                        : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
-                    }`}
-                    title={sidebarCollapsed ? item.label : undefined}
-                  >
-                    <span className="text-lg flex-shrink-0">{item.icon}</span>
-                    {!sidebarCollapsed && <span className="font-medium truncate">{item.label}</span>}
-                  </Link>
-                </li>
-              ))}
+              {menuItems.map((item) => {
+                const hasChildren = item.children && item.children.length > 0
+                const isExpanded = expandedMenus.has(item.path)
+                const itemIsActive = isActive(item.path)
+
+                return (
+                  <li key={item.path}>
+                    {hasChildren ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            if (!sidebarCollapsed) {
+                              toggleMenu(item.path)
+                            }
+                          }}
+                          className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 ${
+                            sidebarCollapsed ? 'justify-center' : ''
+                          } ${
+                            itemIsActive
+                              ? 'bg-primary text-white shadow-md'
+                              : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
+                          }`}
+                          title={sidebarCollapsed ? item.label : undefined}
+                        >
+                          <span className="text-lg flex-shrink-0">{item.icon}</span>
+                          {!sidebarCollapsed && (
+                            <>
+                              <span className="font-medium truncate flex-1 text-left">{item.label}</span>
+                              <svg
+                                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </>
+                          )}
+                        </button>
+                        {!sidebarCollapsed && isExpanded && item.children && (
+                          <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-2">
+                            {item.children.map((child) => (
+                              <li key={child.path}>
+                                <Link
+                                  href={child.path}
+                                  onClick={() => setSidebarOpen(false)}
+                                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 ${
+                                    isActive(child.path)
+                                      ? 'bg-primary text-white shadow-md'
+                                      : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
+                                  }`}
+                                >
+                                  <span className="text-lg flex-shrink-0">{child.icon}</span>
+                                  <span className="font-medium truncate">{child.label}</span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    ) : (
+                      <Link
+                        href={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 ${
+                          sidebarCollapsed ? 'justify-center' : ''
+                        } ${
+                          itemIsActive
+                            ? 'bg-primary text-white shadow-md'
+                            : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
+                        }`}
+                        title={sidebarCollapsed ? item.label : undefined}
+                      >
+                        <span className="text-lg flex-shrink-0">{item.icon}</span>
+                        {!sidebarCollapsed && <span className="font-medium truncate">{item.label}</span>}
+                      </Link>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </nav>
           
@@ -197,7 +317,7 @@ export default function Layout({ children }: LayoutProps) {
               </button>
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-semibold text-gray-900">
-                  {menuItems.find(item => item.path === pathname)?.label || 'Dashboard'}
+                  {getPageTitle()}
                 </h2>
                 {nursery?.name && (
                   <p className="text-xs text-gray-500 truncate">{nursery.name}</p>

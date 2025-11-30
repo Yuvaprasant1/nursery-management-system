@@ -7,6 +7,7 @@ import com.nursery.common.firestore.pagination.PageRequest;
 import com.nursery.common.firestore.pagination.PageResult;
 import com.nursery.nursery.service.NurseryService;
 import com.nursery.sapling.firestore.SaplingDocument;
+import com.nursery.sapling.firestore.SaplingFirestoreRepository;
 import com.nursery.sapling.service.SaplingService;
 import com.nursery.stock.service.StockService;
 import com.nursery.transaction.firestore.TransactionFirestoreRepository;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -30,18 +32,44 @@ public class BreedServiceImpl implements BreedService {
     private final BreedFirestoreRepository repository;
     private final NurseryService nurseryService;
     private final SaplingService saplingService;
+    private final SaplingFirestoreRepository saplingRepository;
     private final StockService stockService;
     private final TransactionFirestoreRepository transactionRepository;
     private final com.nursery.inventory.firestore.InventoryFirestoreRepository inventoryRepository;
     
     @Override
-    public List<BreedResponseDTO> findAll(String nurseryId, String saplingId) {
+    public List<BreedResponseDTO> findAll(String nurseryId, String saplingId, String search) {
         List<BreedDocument> breeds;
         
         if (saplingId != null && !saplingId.isEmpty()) {
             breeds = repository.findBySaplingIdAndNotDeleted(saplingId);
         } else {
             breeds = repository.findByNurseryIdAndNotDeleted(nurseryId);
+        }
+        
+        // Filter by search term if provided (search by breedName or sapling name)
+        if (search != null && !search.trim().isEmpty()) {
+            String searchLower = search.toLowerCase().trim();
+            // Fetch all saplings for the nursery to get sapling names
+            List<SaplingDocument> saplings = saplingRepository.findByNurseryIdAndNotDeleted(nurseryId);
+            Map<String, String> saplingNameMap = saplings.stream()
+                .collect(Collectors.toMap(
+                    SaplingDocument::getId,
+                    SaplingDocument::getName,
+                    (existing, replacement) -> existing
+                ));
+            
+            breeds = breeds.stream()
+                .filter(b -> {
+                    // Search by breed name
+                    if (b.getBreedName().toLowerCase().contains(searchLower)) {
+                        return true;
+                    }
+                    // Search by sapling name
+                    String saplingName = saplingNameMap.get(b.getSaplingId());
+                    return saplingName != null && saplingName.toLowerCase().contains(searchLower);
+                })
+                .collect(Collectors.toList());
         }
         
         return breeds.stream()
@@ -51,18 +79,59 @@ public class BreedServiceImpl implements BreedService {
     }
     
     @Override
-    public PaginatedResponseDTO<BreedResponseDTO> findAllPaginated(String nurseryId, String saplingId, PageRequest pageRequest) {
-        PageResult<BreedDocument> pageResult;
+    public PaginatedResponseDTO<BreedResponseDTO> findAllPaginated(String nurseryId, String saplingId, String search, PageRequest pageRequest) {
+        // Get all breeds first (for search filtering)
+        List<BreedDocument> allBreeds;
         
         if (saplingId != null && !saplingId.isEmpty()) {
-            pageResult = repository.findBySaplingIdAndNotDeletedPaginated(saplingId, pageRequest);
+            allBreeds = repository.findBySaplingIdAndNotDeleted(saplingId);
         } else {
-            pageResult = repository.findByNurseryIdAndNotDeletedPaginated(nurseryId, pageRequest);
+            allBreeds = repository.findByNurseryIdAndNotDeleted(nurseryId);
         }
         
-        List<BreedResponseDTO> content = pageResult.getContent().stream()
+        // Filter by search term if provided (search by breedName or sapling name)
+        if (search != null && !search.trim().isEmpty()) {
+            String searchLower = search.toLowerCase().trim();
+            // Fetch all saplings for the nursery to get sapling names
+            List<SaplingDocument> saplings = saplingRepository.findByNurseryIdAndNotDeleted(nurseryId);
+            Map<String, String> saplingNameMap = saplings.stream()
+                .collect(Collectors.toMap(
+                    SaplingDocument::getId,
+                    SaplingDocument::getName,
+                    (existing, replacement) -> existing
+                ));
+            
+            allBreeds = allBreeds.stream()
+                .filter(b -> {
+                    // Search by breed name
+                    if (b.getBreedName().toLowerCase().contains(searchLower)) {
+                        return true;
+                    }
+                    // Search by sapling name
+                    String saplingName = saplingNameMap.get(b.getSaplingId());
+                    return saplingName != null && saplingName.toLowerCase().contains(searchLower);
+                })
+                .collect(Collectors.toList());
+        }
+        
+        // Sort by updatedAt descending
+        allBreeds = allBreeds.stream()
+            .sorted(Comparator.comparing(BreedDocument::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+            .collect(Collectors.toList());
+        
+        // Apply pagination
+        long totalElements = allBreeds.size();
+        int start = pageRequest.getOffset();
+        int end = Math.min(start + pageRequest.getEffectiveSize(), allBreeds.size());
+        List<BreedDocument> paginatedBreeds = start < allBreeds.size() 
+            ? allBreeds.subList(start, end)
+            : new java.util.ArrayList<>();
+        
+        List<BreedResponseDTO> content = paginatedBreeds.stream()
             .map(this::toResponseDTO)
             .collect(Collectors.toList());
+        
+        PageResult<BreedDocument> pageResult = PageResult.of(paginatedBreeds, pageRequest, totalElements);
         
         return PaginatedResponseDTO.<BreedResponseDTO>builder()
             .content(content)

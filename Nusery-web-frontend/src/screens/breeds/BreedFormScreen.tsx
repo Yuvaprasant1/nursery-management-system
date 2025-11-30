@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { breedApi } from './api/breedApi'
 import { saplingApi } from '@/screens/saplings/api/saplingApi'
 import { useNursery } from '@/contexts/NurseryContext'
@@ -13,17 +12,20 @@ import { useToast } from '@/components/Toaster/useToast'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
+import { Dropdown, DropdownOption } from '@/components/Dropdown'
 import { LoadingSpinner } from '@/components/Loading/LoadingSpinner'
 import { ErrorState } from '@/components/Error/ErrorState'
-import { QUERY_KEYS, ROUTES } from '@/constants'
+import { ROUTES } from '@/constants'
 import { getErrorMessage } from '@/utils/errors'
+import { BreedRequest } from './models/types'
+import { Breed } from './models/types'
+import { Sapling } from '@/screens/saplings/models/types'
+import { PaginatedResponse } from '@/api/types'
 
 const breedSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255, 'Name must be less than 255 characters'),
   description: z.string().optional(),
   saplingId: z.string().min(1, 'Sapling is required'),
-  mode: z.enum(['INDIVIDUAL', 'SLOT'], { required_error: 'Mode is required' }),
-  itemsPerSlot: z.number().min(1, 'Items per slot must be at least 1').optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 })
 
@@ -34,44 +36,98 @@ export default function BreedFormScreen() {
   const params = useParams<{ id?: string }>()
   const { nursery } = useNursery()
   const toast = useToast()
-  const queryClient = useQueryClient()
   const isEditMode = !!params.id
   
-  const { data: breed, isLoading: isLoadingBreed } = useQuery({
-    queryKey: [QUERY_KEYS.BREEDS, params.id],
-    queryFn: () => breedApi.getBreed(params.id!),
-    enabled: isEditMode && !!params.id,
-  })
-
-  const { data: hasTransactions } = useQuery({
-    queryKey: ['breed-has-transactions', params.id],
-    queryFn: () => breedApi.checkHasTransactions(params.id!),
-    enabled: isEditMode && !!params.id,
-  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
-  const { data: saplings, isLoading: isLoadingSaplings } = useQuery({
-    queryKey: ['saplings', nursery?.id],
-    queryFn: () => saplingApi.getAllSaplings(nursery?.id || ''),
-    enabled: !!nursery?.id,
-  })
+  // State for breed API data
+  const [breed, setBreed] = useState<Breed | null>(null)
+  const [isLoadingBreed, setIsLoadingBreed] = useState(false)
+  
+  // State for hasTransactions check
+  const [hasTransactions, setHasTransactions] = useState<boolean>(false)
+  
+  // State for saplings API data
+  const [saplingsData, setSaplingsData] = useState<Sapling[] | PaginatedResponse<Sapling> | null>(null)
+  const [isLoadingSaplings, setIsLoadingSaplings] = useState(false)
+  
+  // Fetch breed data for edit mode
+  useEffect(() => {
+    const fetchBreed = async () => {
+      if (!isEditMode || !params.id) return
+      
+      setIsLoadingBreed(true)
+      try {
+        const data = await breedApi.getBreed(params.id)
+        setBreed(data)
+      } catch (err) {
+        console.error('Failed to load breed:', err)
+      } finally {
+        setIsLoadingBreed(false)
+      }
+    }
+    
+    fetchBreed()
+  }, [isEditMode, params.id])
+
+  // Check if breed has transactions
+  useEffect(() => {
+    const checkTransactions = async () => {
+      if (!isEditMode || !params.id) return
+      
+      try {
+        const result = await breedApi.checkHasTransactions(params.id)
+        setHasTransactions(result)
+      } catch (err) {
+        console.error('Failed to check transactions:', err)
+      }
+    }
+    
+    checkTransactions()
+  }, [isEditMode, params.id])
+  
+  // Fetch saplings
+  useEffect(() => {
+    const fetchSaplings = async () => {
+      if (!nursery?.id) return
+      
+      setIsLoadingSaplings(true)
+      try {
+        const data = await saplingApi.getAllSaplings(nursery.id)
+        setSaplingsData(data)
+      } catch (err) {
+        console.error('Failed to load saplings:', err)
+      } finally {
+        setIsLoadingSaplings(false)
+      }
+    }
+    
+    fetchSaplings()
+  }, [nursery?.id])
+  
+  // Extract saplings array from response
+  const saplings: Sapling[] = useMemo(() => {
+    if (!saplingsData) return []
+    if (Array.isArray(saplingsData)) return saplingsData
+    if ('content' in saplingsData) return saplingsData.content
+    return []
+  }, [saplingsData])
   
   const {
     register,
     handleSubmit,
     formState: { errors },
+    reset,
     watch,
     setValue,
-    reset,
   } = useForm<BreedForm>({
     resolver: zodResolver(breedSchema),
     defaultValues: {
-      mode: 'INDIVIDUAL',
-      itemsPerSlot: 1,
       nurseryId: nursery?.id || '',
     },
   })
-  
-  const mode = watch('mode')
+
+  const selectedSaplingId = watch('saplingId')
   
   // Load breed data for edit mode
   useEffect(() => {
@@ -80,72 +136,85 @@ export default function BreedFormScreen() {
         name: breed.name,
         description: breed.description || '',
         saplingId: breed.saplingId,
-        mode: breed.mode || 'INDIVIDUAL',
-        itemsPerSlot: breed.itemsPerSlot || 1,
         imageUrl: breed.imageUrl || '',
       })
     }
   }, [breed, isEditMode, reset])
   
-  const createMutation = useMutation({
-    mutationFn: breedApi.createBreed,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.BREEDS] })
-      toast.success('Breed created successfully!')
-      router.push(ROUTES.BREEDS)
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error) || 'Failed to create breed')
-    },
-  })
-  
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: BreedRequest }) => 
-      breedApi.updateBreed(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.BREEDS] })
-      toast.success('Breed updated successfully!')
-      router.push(ROUTES.BREEDS)
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error) || 'Failed to update breed')
-    },
-  })
-  
-  const onSubmit = (data: BreedForm) => {
+  const handleCreate = async (data: BreedForm) => {
     if (!nursery?.id) {
-      toast.error('Nursery not found. Please configure your nursery first.')
+      toast.error('Nursery not found.')
       return
     }
-    
-    // If editing and breed has transactions, only send editable fields
-    if (isEditMode && hasTransactions && breed) {
-      const breedData = {
-        name: data.name,
-        description: data.description || undefined,
-        saplingId: breed.saplingId, // Keep original
-        nurseryId: nursery.id,
-        mode: breed.mode || 'INDIVIDUAL', // Keep original
-        itemsPerSlot: breed.mode === 'SLOT' ? (breed.itemsPerSlot || 1) : undefined, // Keep original
-        imageUrl: data.imageUrl || undefined,
-      }
-      updateMutation.mutate({ id: params.id!, data: breedData })
-    } else {
-      const breedData = {
+
+    setIsSubmitting(true)
+    try {
+      const breedData: BreedRequest = {
         name: data.name,
         description: data.description || undefined,
         saplingId: data.saplingId,
         nurseryId: nursery.id,
-        mode: data.mode,
-        itemsPerSlot: data.mode === 'SLOT' ? (data.itemsPerSlot || 1) : undefined,
+        mode: 'INDIVIDUAL',
         imageUrl: data.imageUrl || undefined,
       }
       
-      if (isEditMode && params.id) {
-        updateMutation.mutate({ id: params.id, data: breedData })
+      await breedApi.createBreed(breedData)
+      toast.success('Breed created successfully!')
+      router.push(ROUTES.BREEDS)
+    } catch (error) {
+      // Error is handled by Axios interceptor
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleUpdate = async (data: BreedForm) => {
+    if (!nursery?.id || !params.id) {
+      toast.error('Nursery not found.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      let breedData: BreedRequest
+      
+      // If editing and breed has transactions, only send editable fields
+      if (hasTransactions && breed) {
+        breedData = {
+          name: data.name,
+          description: data.description || undefined,
+          saplingId: breed.saplingId, // Keep original
+          nurseryId: nursery.id,
+          mode: breed.mode || 'INDIVIDUAL', // Keep original
+          itemsPerSlot: breed.itemsPerSlot, // Keep original
+          imageUrl: data.imageUrl || undefined,
+        }
       } else {
-        createMutation.mutate(breedData)
+        breedData = {
+          name: data.name,
+          description: data.description || undefined,
+          saplingId: data.saplingId,
+          nurseryId: nursery.id,
+          mode: 'INDIVIDUAL',
+          imageUrl: data.imageUrl || undefined,
+        }
       }
+      
+      await breedApi.updateBreed(params.id, breedData)
+      toast.success('Breed updated successfully!')
+      router.push(ROUTES.BREEDS)
+    } catch (error) {
+      // Error is handled by Axios interceptor
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+  
+  const onSubmit = (data: BreedForm) => {
+    if (isEditMode) {
+      handleUpdate(data)
+    } else {
+      handleCreate(data)
     }
   }
   
@@ -161,7 +230,7 @@ export default function BreedFormScreen() {
     return (
       <ErrorState
         title="Nursery not found"
-        message="Please configure your nursery first."
+        message="Nursery information is not available."
         showRetry={false}
       />
     )
@@ -198,7 +267,7 @@ export default function BreedFormScreen() {
               <div>
                 <h3 className="text-sm font-semibold text-yellow-800 mb-1">Restricted Editing</h3>
                 <p className="text-sm text-yellow-700">
-                  This breed has existing transactions. Sapling, Mode, and Items Per Slot cannot be changed to maintain data integrity.
+                  This breed has existing transactions. Sapling cannot be changed to maintain data integrity.
                 </p>
               </div>
             </div>
@@ -229,67 +298,27 @@ export default function BreedFormScreen() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Sapling <span className="text-red-500">*</span>
-              {isEditMode && hasTransactions && (
-                <span className="ml-2 text-xs text-gray-500">(Cannot be changed)</span>
-              )}
-            </label>
-            <select
-              {...register('saplingId')}
+            <Dropdown
+              label={
+                <>
+                  Sapling <span className="text-red-500">*</span>
+                  {isEditMode && hasTransactions && (
+                    <span className="ml-2 text-xs text-gray-500 font-normal">(Cannot be changed)</span>
+                  )}
+                </>
+              }
+              options={saplings.map(sapling => ({
+                value: sapling.id,
+                label: sapling.name,
+              })) as DropdownOption<string>[]}
+              value={selectedSaplingId}
+              onChange={(value) => setValue('saplingId', value, { shouldValidate: true })}
+              placeholder="-- Select a sapling --"
               disabled={isEditMode && hasTransactions}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ${
-                isEditMode && hasTransactions ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
-              required
-            >
-              <option value="">-- Select a sapling --</option>
-              {saplings?.map((sapling) => (
-                <option key={sapling.id} value={sapling.id}>
-                  {sapling.name}
-                </option>
-              ))}
-            </select>
-            {errors.saplingId && (
-              <p className="mt-1 text-sm text-red-600">{errors.saplingId.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Mode <span className="text-red-500">*</span>
-              {isEditMode && hasTransactions && (
-                <span className="ml-2 text-xs text-gray-500">(Cannot be changed)</span>
-              )}
-            </label>
-            <select
-              {...register('mode')}
-              disabled={isEditMode && hasTransactions}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ${
-                isEditMode && hasTransactions ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
-              required
-            >
-              <option value="INDIVIDUAL">Individual</option>
-              <option value="SLOT">Slot</option>
-            </select>
-            {errors.mode && (
-              <p className="mt-1 text-sm text-red-600">{errors.mode.message}</p>
-            )}
-          </div>
-
-          {mode === 'SLOT' && (
-            <Input
-              label="Items Per Slot"
-              type="number"
-              min="1"
-              step="1"
-              {...register('itemsPerSlot', { valueAsNumber: true })}
-              error={errors.itemsPerSlot?.message}
-              required={mode === 'SLOT'}
-              disabled={isEditMode && hasTransactions}
+              error={errors.saplingId?.message}
             />
-          )}
+          </div>
+
 
           <Input
             label="Image URL"
@@ -309,8 +338,8 @@ export default function BreedFormScreen() {
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending}
-              isLoading={createMutation.isPending || updateMutation.isPending}
+              disabled={isSubmitting}
+              isLoading={isSubmitting}
             >
               {isEditMode ? 'Update Breed' : 'Create Breed'}
             </Button>
@@ -320,4 +349,3 @@ export default function BreedFormScreen() {
     </div>
   )
 }
-

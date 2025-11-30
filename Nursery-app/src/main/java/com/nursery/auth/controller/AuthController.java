@@ -2,7 +2,9 @@ package com.nursery.auth.controller;
 
 import com.nursery.common.dto.ApiResponse;
 import com.nursery.common.util.SecurityUtil;
+import com.nursery.auth.dto.request.GenerateTokenRequestDTO;
 import com.nursery.auth.dto.request.LoginRequestDTO;
+import com.nursery.auth.dto.request.SignupRequestDTO;
 import com.nursery.auth.dto.response.AuthResponseDTO;
 import com.nursery.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +44,46 @@ public class AuthController {
         AuthResponseDTO response = authService.login(request);
         return ResponseEntity.status(HttpStatus.OK)
             .body(ApiResponse.success("Login successful", response));
+    }
+    
+    @PostMapping("/signup")
+    @Operation(summary = "User signup", description = "Creates a new user account and assigns an existing nursery. Designed for backend/Postman usage.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "201", 
+            description = "Signup successful",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400", 
+            description = "Validation error or user already exists"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429", 
+            description = "Rate limit exceeded")
+    })
+    public ResponseEntity<ApiResponse<AuthResponseDTO>> signup(@Valid @RequestBody SignupRequestDTO request) {
+        AuthResponseDTO response = authService.signup(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success("Signup successful. Nursery configured automatically.", response));
+    }
+    
+    @PostMapping("/generate-token")
+    @Operation(summary = "Generate bearer token", description = "Generates a JWT token for an existing user. Designed for backend/Postman usage.")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200", 
+            description = "Token generated successfully",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400", 
+            description = "User does not exist or validation error"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429", 
+            description = "Rate limit exceeded")
+    })
+    public ResponseEntity<ApiResponse<AuthResponseDTO>> generateToken(@Valid @RequestBody GenerateTokenRequestDTO request) {
+        AuthResponseDTO response = authService.generateToken(request);
+        return ResponseEntity.status(HttpStatus.OK)
+            .body(ApiResponse.success("Token generated successfully", response));
     }
     
     @GetMapping("/me")

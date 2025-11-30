@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect,useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,9 +13,11 @@ import { Input } from '@/components/Input'
 import { LoadingSpinner } from '@/components/Loading/LoadingSpinner'
 import { ErrorState } from '@/components/Error/ErrorState'
 import { useToast } from '@/components/Toaster/useToast'
-import { ROUTES, QUERY_KEYS } from '@/constants'
+import { ROUTES } from '@/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { TransactionType, ErrorMessage, SuccessMessage, UIText, ButtonAction } from '@/enums'
+import { Inventory } from './models/types'
+import { Breed } from '@/screens/breeds/models/types'
 
 const quantityUpdateSchema = z.object({
   transactionType: z.nativeEnum(TransactionType).optional(),
@@ -59,20 +60,72 @@ export default function InventoryDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const toast = useToast()
-  const queryClient = useQueryClient()
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const { data: inventory, isLoading: isLoadingInventory, error, refetch, isError } = useQuery({
-    queryKey: ['inventory', id],
-    queryFn: () => inventoryApi.getInventoryByBreed(id!),
-    enabled: !!id,
-    retry: 1,
-  })
-
-  const { data: breed, isLoading: isLoadingBreed } = useQuery({
-    queryKey: [QUERY_KEYS.BREEDS, id],
-    queryFn: () => breedApi.getBreed(id!),
-    enabled: !!id,
-  })
+  // State for inventory API data
+  const [inventory, setInventory] = useState<Inventory | null>(null)
+  const [isLoadingInventory, setIsLoadingInventory] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  
+  // State for breed API data
+  const [breed, setBreed] = useState<Breed | null>(null)
+  const [isLoadingBreed, setIsLoadingBreed] = useState(false)
+  
+  // Fetch inventory function (for manual refetch)
+  const fetchInventory = useCallback(async () => {
+    if (!id) return
+    
+    setIsLoadingInventory(true)
+    setError(null)
+    
+    try {
+      const data = await inventoryApi.getInventoryByBreed(id)
+      setInventory(data)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to load inventory')
+      setError(error)
+    } finally {
+      setIsLoadingInventory(false)
+    }
+  }, [id])
+  
+  // Fetch breed function (for manual refetch)
+  const fetchBreed = useCallback(async () => {
+    if (!id) return
+    
+    setIsLoadingBreed(true)
+    try {
+      const data = await breedApi.getBreed(id)
+      setBreed(data)
+    } catch (err) {
+      console.error('Failed to load breed:', err)
+    } finally {
+      setIsLoadingBreed(false)
+    }
+  }, [id])
+  
+  // Fetch data when component mounts or id changes - use direct dependencies
+  useEffect(() => {
+    if (!id) return
+    
+    setIsLoadingInventory(true)
+    setError(null)
+    
+    inventoryApi.getInventoryByBreed(id)
+      .then(data => setInventory(data))
+      .catch(err => {
+        const error = err instanceof Error ? err : new Error('Failed to load inventory')
+        setError(error)
+      })
+      .finally(() => setIsLoadingInventory(false))
+    
+    setIsLoadingBreed(true)
+    breedApi.getBreed(id)
+      .then(data => setBreed(data))
+      .catch(err => console.error('Failed to load breed:', err))
+      .finally(() => setIsLoadingBreed(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]) // Direct dependencies
 
   const isLoading = isLoadingInventory || isLoadingBreed
 
@@ -101,24 +154,6 @@ export default function InventoryDetailScreen() {
       })
     }
   }, [inventory, reset])
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: { transactionType: TransactionType; quantity: number; notes?: string }) => {
-      if (!id) throw new Error('Breed ID not found')
-      await inventoryApi.createTransaction(id, data)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inventory'] })
-      queryClient.invalidateQueries({ queryKey: ['inventory', id] })
-      toast.success(SuccessMessage.TRANSACTION_CREATED)
-      reset({
-        quantity: 0,
-      })
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error) || ErrorMessage.FAILED_TO_CREATE_TRANSACTION)
-    },
-  })
 
   // Calculate values before early returns (all hooks must be called before returns)
   const breedName = breed?.name || 'Loading...'
@@ -167,18 +202,18 @@ export default function InventoryDetailScreen() {
     )
   }
 
-  if (isError && !inventory) {
+  if (error && !inventory) {
     return (
       <ErrorState
         title={ErrorMessage.FAILED_TO_LOAD_INVENTORY}
         message={getErrorMessage(error) || ErrorMessage.INVENTORY_NOT_FOUND}
-        onRetry={() => refetch()}
+        onRetry={fetchInventory}
       />
     )
   }
 
-  const onSubmit = (data: QuantityUpdateForm) => {
-    if (!breed) {
+  const onSubmit = async (data: QuantityUpdateForm) => {
+    if (!breed || !id) {
       toast.error(ErrorMessage.BREED_INFORMATION_NOT_LOADED)
       return
     }
@@ -206,11 +241,23 @@ export default function InventoryDetailScreen() {
       return
     }
 
-    updateMutation.mutate({
-      transactionType: data.transactionType,
-      quantity: data.quantity,
-      notes: data.notes,
-    })
+    setIsSubmitting(true)
+    try {
+      await inventoryApi.createTransaction(id, {
+        transactionType: data.transactionType,
+        quantity: data.quantity,
+        notes: data.notes,
+      })
+      toast.success(SuccessMessage.TRANSACTION_CREATED)
+      reset({
+        quantity: 0,
+      })
+      fetchInventory() // Refresh inventory data
+    } catch (error) {
+      toast.error(getErrorMessage(error) || ErrorMessage.FAILED_TO_CREATE_TRANSACTION)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -369,8 +416,8 @@ export default function InventoryDetailScreen() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={updateMutation.isPending || !quantity || quantity === 0 || !isValidQuantity || !transactionType}
-                  isLoading={updateMutation.isPending}
+                  disabled={isSubmitting || !quantity || quantity === 0 || !isValidQuantity || !transactionType}
+                  isLoading={isSubmitting}
                 >
                   {UIText.CREATE_TRANSACTION}
                 </Button>
@@ -382,4 +429,3 @@ export default function InventoryDetailScreen() {
     </div>
   )
 }
-

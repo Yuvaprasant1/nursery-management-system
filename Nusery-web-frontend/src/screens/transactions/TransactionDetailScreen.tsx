@@ -1,37 +1,89 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
 import { transactionApi } from './api/transactionApi'
 import { breedApi } from '@/screens/breeds/api/breedApi'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { LoadingState } from '@/components/Loading/LoadingState'
 import { ErrorState } from '@/components/Error/ErrorState'
-import { ROUTES, QUERY_KEYS } from '@/constants'
+import { ROUTES } from '@/constants'
 import { useNursery } from '@/contexts/NurseryContext'
 import { TransactionType } from '@/enums'
 import { cn } from '@/utils/cn'
 import { formatDateTime } from '@/utils/timeUtils'
+import { getErrorMessage } from '@/utils/errors'
+import { useState, useEffect, useCallback } from 'react'
+import { Transaction } from './models/types'
 
 export default function TransactionDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { nursery } = useNursery()
   
-  const { data: transaction, isLoading, error, refetch, isError } = useQuery({
-    queryKey: [QUERY_KEYS.TRANSACTIONS, id],
-    queryFn: () => transactionApi.getTransaction(id!),
-    enabled: !!id,
-    retry: 1,
-  })
+  // State for transaction API data
+  const [transaction, setTransaction] = useState<Transaction | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
   
-  // Fetch breed name if needed
-  const { data: breedsData } = useQuery({
-    queryKey: [QUERY_KEYS.BREEDS, nursery?.id],
-    queryFn: () => breedApi.getBreeds(nursery?.id || ''),
-    enabled: !!nursery?.id && !!transaction?.breedId,
-  })
+  // State for breeds API data
+  const [breedsData, setBreedsData] = useState<any>(null)
+  
+  // Fetch transaction function (for manual refetch)
+  const fetchTransaction = useCallback(async () => {
+    if (!id) return
+    
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const data = await transactionApi.getTransaction(id)
+      setTransaction(data)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to load transaction')
+      setError(error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [id])
+  
+  // Fetch breeds function (for manual refetch)
+  const fetchBreeds = useCallback(async () => {
+    if (!nursery?.id || !transaction?.breedId) return
+    
+    try {
+      const data = await breedApi.getBreeds(nursery.id)
+      setBreedsData(data)
+    } catch (err) {
+      console.error('Failed to load breeds:', err)
+    }
+  }, [nursery?.id, transaction?.breedId])
+  
+  // Fetch data when dependencies change - use direct dependencies
+  useEffect(() => {
+    if (!id) return
+    
+    setIsLoading(true)
+    setError(null)
+    
+    transactionApi.getTransaction(id)
+      .then(data => setTransaction(data))
+      .catch(err => {
+        const error = err instanceof Error ? err : new Error('Failed to load transaction')
+        setError(error)
+      })
+      .finally(() => setIsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]) // Direct dependencies
+  
+  useEffect(() => {
+    if (!nursery?.id || !transaction?.breedId) return
+    
+    breedApi.getBreeds(nursery.id)
+      .then(data => setBreedsData(data))
+      .catch(err => console.error('Failed to load breeds:', err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id, transaction?.breedId]) // Direct dependencies
   
   const breedName = transaction?.breedName || 
     (breedsData && Array.isArray(breedsData) 
@@ -43,48 +95,40 @@ export default function TransactionDetailScreen() {
     return <LoadingState message="Loading transaction details..." />
   }
   
-  if (isError) {
+  if (error || !transaction) {
     return (
       <ErrorState
         title="Failed to load transaction"
-        message={error instanceof Error ? error.message : 'Unknown error'}
-        onRetry={() => refetch()}
+        message={error ? getErrorMessage(error) : 'Transaction not found'}
+        onRetry={fetchTransaction}
       />
     )
   }
-  
-  if (!transaction) {
-    return (
-      <ErrorState
-        title="Transaction not found"
-        message="The transaction you're looking for doesn't exist or has been removed."
-        showRetry={false}
-      />
-    )
-  }
-  
+
   const isPositive = transaction.delta > 0
   const isSell = transaction.type === TransactionType.SELL
-  
+
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <Button variant="outline" onClick={() => router.push(ROUTES.TRANSACTIONS)}>
-        ← Back to Transactions
-      </Button>
-      
-      <Card className="p-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Transaction Details</h1>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="flex items-center gap-4">
+        <Button variant="outline" onClick={() => router.push(ROUTES.TRANSACTIONS)}>
+          ← Back to Transactions
+        </Button>
+        <h1 className="text-3xl font-bold text-gray-900">Transaction Details</h1>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card title="Transaction Information">
           <div className="space-y-4">
             <div>
-              <dt className="text-sm font-medium text-gray-500 mb-1">Breed</dt>
-              <dd className="text-base text-gray-900 font-semibold">{breedName}</dd>
+              <label className="text-sm font-medium text-gray-500">Breed</label>
+              <p className="text-lg font-semibold text-gray-900 mt-1">{breedName}</p>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500 mb-1">Transaction Type</dt>
-              <dd className="text-base text-gray-900">
+              <label className="text-sm font-medium text-gray-500">Type</label>
+              <p className="mt-1">
                 <span className={cn(
-                  'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                  'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium',
                   isSell
                     ? 'bg-red-100 text-red-800'
                     : transaction.type === TransactionType.RECEIVE || transaction.type === TransactionType.PLANTED
@@ -97,66 +141,75 @@ export default function TransactionDetailScreen() {
                 )}>
                   {String(transaction.type)}
                 </span>
-              </dd>
+              </p>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500 mb-1">Delta</dt>
-              <dd className="text-base text-gray-900">
-                <span className={cn(
-                  'font-semibold',
-                  isPositive ? 'text-green-600' : 'text-red-600'
-                )}>
-                  {isPositive ? '+' : ''}{transaction.delta}
-                </span>
-              </dd>
+              <label className="text-sm font-medium text-gray-500">Quantity Delta</label>
+              <p className={cn(
+                'text-2xl font-bold mt-1',
+                isPositive ? 'text-green-600' : 'text-red-600'
+              )}>
+                {isPositive ? '+' : ''}{transaction.delta}
+              </p>
             </div>
             {transaction.reason && (
               <div>
-                <dt className="text-sm font-medium text-gray-500 mb-1">Reason</dt>
-                <dd className="text-base text-gray-900">{transaction.reason}</dd>
+                <label className="text-sm font-medium text-gray-500">Reason</label>
+                <p className="text-gray-900 mt-1">{transaction.reason}</p>
               </div>
             )}
           </div>
-          
+        </Card>
+
+        <Card title="Additional Information">
           <div className="space-y-4">
             {transaction.userPhone && (
               <div>
-                <dt className="text-sm font-medium text-gray-500 mb-1">User Phone</dt>
-                <dd className="text-base text-gray-900 font-mono text-sm">{transaction.userPhone}</dd>
+                <label className="text-sm font-medium text-gray-500">User Phone</label>
+                <p className="text-gray-900 mt-1">{transaction.userPhone}</p>
               </div>
             )}
             {transaction.reversedByTxnId && (
               <div>
-                <dt className="text-sm font-medium text-gray-500 mb-1">Reversed By Transaction</dt>
-                <dd className="text-base text-gray-900 font-mono text-sm">{transaction.reversedByTxnId}</dd>
+                <label className="text-sm font-medium text-gray-500">Reversed By Transaction</label>
+                <p className="text-gray-900 mt-1">{transaction.reversedByTxnId}</p>
               </div>
             )}
+            <div>
+              <label className="text-sm font-medium text-gray-500">Created At</label>
+              <p className="text-gray-900 mt-1">
+                {formatDateTime(transaction.createdAt)}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500">Last Updated</label>
+              <p className="text-gray-900 mt-1">
+                {formatDateTime(transaction.updatedAt)}
+              </p>
+            </div>
             {transaction.isUndo && (
               <div>
-                <dt className="text-sm font-medium text-gray-500 mb-1">Is Undo</dt>
-                <dd className="text-base text-gray-900">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    Yes
+                <label className="text-sm font-medium text-gray-500">Status</label>
+                <p className="text-gray-900 mt-1">
+                  <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-sm">
+                    Undone
                   </span>
-                </dd>
+                </p>
               </div>
             )}
-            <div>
-              <dt className="text-sm font-medium text-gray-500 mb-1">Created At</dt>
-              <dd className="text-base text-gray-900">
-                {formatDateTime(transaction.createdAt)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500 mb-1">Updated At</dt>
-              <dd className="text-base text-gray-900">
-                {formatDateTime(transaction.updatedAt)}
-              </dd>
-            </div>
+            {transaction.isDeleted && (
+              <div>
+                <label className="text-sm font-medium text-gray-500">Status</label>
+                <p className="text-gray-900 mt-1">
+                  <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">
+                    Deleted
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
-        </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }
-

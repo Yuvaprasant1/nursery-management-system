@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@/components/Button'
+import { Dropdown, DropdownOption } from '@/components/Dropdown'
 import { cn } from '@/utils/cn'
 
 interface PaginationProps {
@@ -68,12 +69,16 @@ export function Pagination({
     return pages
   }
   
-  const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSize = parseInt(e.target.value, 10)
-    onPageSizeChange(newSize)
+  const handlePageSizeChange = (size: number) => {
+    onPageSizeChange(size)
     // Reset to first page when changing page size
     onPageChange(0)
   }
+
+  const pageSizeOptions: DropdownOption<number>[] = PAGE_SIZE_OPTIONS.map(size => ({
+    value: size,
+    label: size.toString(),
+  }))
   
   if (totalPages === 0) {
     return null
@@ -85,21 +90,16 @@ export function Pagination({
     <div className={cn('flex flex-col sm:flex-row items-center justify-between gap-4 py-4', className)}>
       {/* Page size selector */}
       <div className="flex items-center gap-2">
-        <label htmlFor="page-size" className="text-sm text-gray-700 whitespace-nowrap">
+        <span className="text-sm text-gray-700 whitespace-nowrap">
           Items per page:
-        </label>
-        <select
-          id="page-size"
+        </span>
+        <Dropdown
+          options={pageSizeOptions}
           value={pageSize}
           onChange={handlePageSizeChange}
-          className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {PAGE_SIZE_OPTIONS.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
+          size="sm"
+          className="w-20"
+        />
       </div>
       
       {/* Pagination controls */}

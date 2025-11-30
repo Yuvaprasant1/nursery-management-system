@@ -11,9 +11,9 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useToast } from '@/components/Toaster/useToast'
 import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
-import { NurseryConfigurationModal } from '@/components/Modal/NurseryConfigurationModal'
 import { LoadingSpinner } from '@/components/Loading/LoadingSpinner'
 import { getErrorMessage } from '@/utils/errors'
+import { STORAGE_KEYS, ROUTES } from '@/constants'
 
 const loginSchema = z.object({
   phone: z
@@ -30,13 +30,11 @@ type LoginForm = z.infer<typeof loginSchema>
  * 
  * Handles user authentication and navigation flow:
  * - Validates user credentials
- * - Manages nursery configuration for new users
  * - Waits for nursery and theme data to load before navigation
  * - Shows loading states during async operations
  */
 export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false)
-  const [showNurseryModal, setShowNurseryModal] = useState(false)
   
   const { login, user } = useAuth()
   const { nursery, isWaiting: nurseryWaiting } = useNursery()
@@ -64,14 +62,7 @@ export default function LoginScreen() {
   const onSubmit = async (data: LoginForm) => {
     try {
       setIsLoading(true)
-      const loggedInUser = await login(data.phone, data.password)
-      
-      if (!loggedInUser?.nurseryId) {
-        setShowNurseryModal(true)
-        setIsLoading(false)
-        return
-      }
-      
+      await login(data.phone, data.password)
       toast.success('Login successful!')
       // Keep loading state active - will be reset in navigation effect
     } catch (error: unknown) {
@@ -82,45 +73,19 @@ export default function LoginScreen() {
   }
 
   /**
-   * Handles navigation after data loading completes
-   * - Waits for both nursery and theme contexts to finish loading
-   * - Navigates to dashboard on success
-   * - Shows error or modal based on user state
+   * Handles navigation after login
+   * - Navigates immediately when user is logged in
+   * - Contexts will load data in background
    */
   useEffect(() => {
-    if (isDataLoading) {
-      return
-    }
-    
     if (!user) {
       return
     }
 
-    if (nursery && user.nurseryId) {
-      router.replace('/dashboard')
-      setIsLoading(false)
-      return
-    }
-
-    if (user.nurseryId && !nursery) {
-      setIsLoading(false)
-      toast.error('Failed to load nursery data. Please try again.')
-      return
-    }
-
-    if (!user.nurseryId) {
-      setIsLoading(false)
-      setShowNurseryModal(true)
-    }
-  }, [isDataLoading, nursery, user, router, toast])
-
-  /**
-   * Handles nursery configuration completion
-   */
-  const handleNurseryConfigured = () => {
-    setShowNurseryModal(false)
-    toast.success('Nursery configured successfully!')
-  }
+    // Navigate immediately - contexts will load data in background
+    router.replace(ROUTES.DASHBOARD)
+    setIsLoading(false)
+  }, [user, router])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 px-4 py-12 animate-in fade-in-0 duration-500">
@@ -185,11 +150,6 @@ export default function LoginScreen() {
           </div>
         </div>
       </div>
-
-      <NurseryConfigurationModal
-        isOpen={showNurseryModal}
-        onSuccess={handleNurseryConfigured}
-      />
     </div>
   )
 }

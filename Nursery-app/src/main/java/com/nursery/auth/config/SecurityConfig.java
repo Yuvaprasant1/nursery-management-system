@@ -49,12 +49,14 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/auth/login", 
+                    "/auth/generate-token",
                     "/auth/me",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     "/swagger-ui.html",
                     "/actuator/health"
                 ).permitAll()
+                .requestMatchers("/auth/signup").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

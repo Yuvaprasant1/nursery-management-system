@@ -1,9 +1,10 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from 'axios'
 import { STORAGE_KEYS, ROUTES } from '@/constants'
-import { ApiError, NetworkError, UnauthorizedError, NotFoundError, ValidationError } from '@/utils/errors'
-import { HttpStatusCode, ErrorMessage } from '@/enums'
+import { ApiError, NetworkError, UnauthorizedError, NotFoundError, ValidationError, getErrorMessage } from '@/utils/errors'
+import { HttpStatusCode, ErrorMessage, ToastType } from '@/enums'
 import { ApiResponse } from '@/api/types'
 import { env } from '@/config/env'
+import { toastManager } from '@/components/Toaster/useToast'
 
 // Use environment configuration for API base URL
 // In development, use full backend URL directly
@@ -30,22 +31,28 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    
     return config
   },
-  () => {
+  (error) => {
     return Promise.reject(new NetworkError(ErrorMessage.FAILED_TO_SEND_REQUEST))
   }
 )
 
 // Response interceptor to handle errors
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response
+  },
   (error: AxiosError) => {
+    let errorToReject: Error
+    
     // Network error (no response from server)
     if (!error.response) {
-      return Promise.reject(
-        new NetworkError(error.message || ErrorMessage.NETWORK_ERROR)
-      )
+      errorToReject = new NetworkError(error.message || ErrorMessage.NETWORK_ERROR)
+      // Show toast for network errors
+      toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
+      return Promise.reject(errorToReject)
     }
 
     const { status, data } = error.response
@@ -56,6 +63,15 @@ apiClient.interceptors.response.use(
         // Unauthorized - clear token and redirect to login
         localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
         localStorage.removeItem(STORAGE_KEYS.USER)
+        // Extract message from ApiResponse structure
+        const unauthorizedData = data as ApiResponse<unknown> | { message?: string }
+        const unauthorizedMessage = 
+          (unauthorizedData as ApiResponse<unknown>)?.message || 
+          (unauthorizedData as { message?: string })?.message || 
+          ErrorMessage.UNAUTHORIZED_ACTION
+        errorToReject = new UnauthorizedError(unauthorizedMessage)
+        // Show toast before redirect
+        toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
         // Dispatch a custom event for navigation (components can listen to this)
         if (typeof window !== 'undefined') {
           // Use custom event that components can listen to, or fallback to window.location
@@ -67,18 +83,12 @@ apiClient.interceptors.response.use(
             }
           }, 100)
         }
-        // Extract message from ApiResponse structure
-        const unauthorizedData = data as ApiResponse<unknown> | { message?: string }
-        const unauthorizedMessage = 
-          (unauthorizedData as ApiResponse<unknown>)?.message || 
-          (unauthorizedData as { message?: string })?.message || 
-          ErrorMessage.UNAUTHORIZED_ACTION
-        return Promise.reject(new UnauthorizedError(unauthorizedMessage))
+        return Promise.reject(errorToReject)
 
       case HttpStatusCode.FORBIDDEN:
-        return Promise.reject(
-          new UnauthorizedError(ErrorMessage.NO_PERMISSION)
-        )
+        errorToReject = new UnauthorizedError(ErrorMessage.NO_PERMISSION)
+        toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
+        return Promise.reject(errorToReject)
 
       case HttpStatusCode.NOT_FOUND:
         // Extract message from ApiResponse structure
@@ -87,7 +97,9 @@ apiClient.interceptors.response.use(
           (notFoundData as ApiResponse<unknown>)?.message || 
           (notFoundData as { message?: string })?.message || 
           ErrorMessage.RESOURCE_NOT_FOUND
-        return Promise.reject(new NotFoundError(notFoundMessage))
+        errorToReject = new NotFoundError(notFoundMessage)
+        toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
+        return Promise.reject(errorToReject)
 
       case HttpStatusCode.BAD_REQUEST:
       case HttpStatusCode.UNPROCESSABLE_ENTITY:
@@ -99,9 +111,9 @@ apiClient.interceptors.response.use(
           (errorData as { message?: string })?.message || 
           ErrorMessage.VALIDATION_FAILED
         const errorDetails = (errorData as { errors?: Record<string, string[]> })?.errors
-        return Promise.reject(
-          new ValidationError(errorMessage, errorDetails)
-        )
+        errorToReject = new ValidationError(errorMessage, errorDetails)
+        toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
+        return Promise.reject(errorToReject)
 
       case HttpStatusCode.INTERNAL_SERVER_ERROR:
       case HttpStatusCode.BAD_GATEWAY:
@@ -113,9 +125,9 @@ apiClient.interceptors.response.use(
           (serverErrorData as ApiResponse<unknown>)?.message || 
           (serverErrorData as { message?: string })?.message || 
           ErrorMessage.SERVER_ERROR
-        return Promise.reject(
-          new ApiError(serverErrorMessage, status, data)
-        )
+        errorToReject = new ApiError(serverErrorMessage, status, data)
+        toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
+        return Promise.reject(errorToReject)
 
       default:
         // Extract message from ApiResponse structure
@@ -124,9 +136,9 @@ apiClient.interceptors.response.use(
           (defaultErrorData as ApiResponse<unknown>)?.message || 
           (defaultErrorData as { message?: string })?.message || 
           ErrorMessage.UNEXPECTED_ERROR
-        return Promise.reject(
-          new ApiError(defaultErrorMessage, status, data)
-        )
+        errorToReject = new ApiError(defaultErrorMessage, status, data)
+        toastManager.addToast(getErrorMessage(errorToReject), ToastType.ERROR, 7000)
+        return Promise.reject(errorToReject)
     }
   }
 )

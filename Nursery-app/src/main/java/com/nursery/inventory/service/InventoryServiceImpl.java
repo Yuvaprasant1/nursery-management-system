@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,19 +29,64 @@ public class InventoryServiceImpl implements InventoryService {
     private final BreedFirestoreRepository breedRepository;
     
     @Override
-    public List<InventoryResponseDTO> findAll(String nurseryId) {
-        return repository.findByNurseryId(nurseryId).stream()
+    public List<InventoryResponseDTO> findAll(String nurseryId, String search) {
+        List<InventoryDocument> inventories = repository.findByNurseryId(nurseryId);
+        
+        // Filter by search term if provided (search by breed name)
+        if (search != null && !search.trim().isEmpty()) {
+            String searchLower = search.toLowerCase().trim();
+            // Get all breeds for the nursery and filter by search term
+            List<com.nursery.breed.firestore.BreedDocument> breeds = breedRepository.findByNurseryIdAndNotDeleted(nurseryId);
+            Set<String> matchingBreedIds = breeds.stream()
+                .filter(b -> b.getBreedName().toLowerCase().contains(searchLower))
+                .map(com.nursery.breed.firestore.BreedDocument::getId)
+                .collect(Collectors.toSet());
+            
+            // Filter inventory by matching breed IDs
+            inventories = inventories.stream()
+                .filter(inv -> matchingBreedIds.contains(inv.getBreedId()))
+                .collect(Collectors.toList());
+        }
+        
+        return inventories.stream()
             .map(this::toResponseDTO)
             .collect(Collectors.toList());
     }
     
     @Override
-    public PaginatedResponseDTO<InventoryResponseDTO> findAllPaginated(String nurseryId, PageRequest pageRequest) {
-        PageResult<InventoryDocument> pageResult = repository.findByNurseryIdPaginated(nurseryId, pageRequest);
+    public PaginatedResponseDTO<InventoryResponseDTO> findAllPaginated(String nurseryId, String search, PageRequest pageRequest) {
+        // Get all inventories first (for search filtering)
+        List<InventoryDocument> allInventories = repository.findByNurseryId(nurseryId);
         
-        List<InventoryResponseDTO> content = pageResult.getContent().stream()
+        // Filter by search term if provided (search by breed name)
+        if (search != null && !search.trim().isEmpty()) {
+            String searchLower = search.toLowerCase().trim();
+            // Get all breeds for the nursery and filter by search term
+            List<com.nursery.breed.firestore.BreedDocument> breeds = breedRepository.findByNurseryIdAndNotDeleted(nurseryId);
+            Set<String> matchingBreedIds = breeds.stream()
+                .filter(b -> b.getBreedName().toLowerCase().contains(searchLower))
+                .map(com.nursery.breed.firestore.BreedDocument::getId)
+                .collect(Collectors.toSet());
+            
+            // Filter inventory by matching breed IDs
+            allInventories = allInventories.stream()
+                .filter(inv -> matchingBreedIds.contains(inv.getBreedId()))
+                .collect(Collectors.toList());
+        }
+        
+        // Apply pagination
+        long totalElements = allInventories.size();
+        int start = pageRequest.getOffset();
+        int end = Math.min(start + pageRequest.getEffectiveSize(), allInventories.size());
+        List<InventoryDocument> paginatedInventories = start < allInventories.size() 
+            ? allInventories.subList(start, end)
+            : new java.util.ArrayList<>();
+        
+        List<InventoryResponseDTO> content = paginatedInventories.stream()
             .map(this::toResponseDTO)
             .collect(Collectors.toList());
+        
+        PageResult<InventoryDocument> pageResult = PageResult.of(paginatedInventories, pageRequest, totalElements);
         
         return PaginatedResponseDTO.<InventoryResponseDTO>builder()
             .content(content)

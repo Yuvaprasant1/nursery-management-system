@@ -35,6 +35,9 @@ export const ROUTES = {
   INVENTORY: '/inventory',
   TRANSACTIONS: '/transactions',
   THEME: '/theme',
+  ADMIN: '/admin',
+  ADMIN_NURSERY: '/admin/nursery',
+  ADMIN_THEME: '/admin/theme',
 } as const
 
 export const QUERY_KEYS = {
@@ -52,7 +55,7 @@ export const PAGINATION = {
   DEFAULT_PAGE: 0,
 } as const
 
-export const DEBOUNCE_DELAY = 300
+export const DEBOUNCE_DELAY = 500
 
 export const DATE_FORMATS = {
   DISPLAY: 'MMM dd, yyyy',

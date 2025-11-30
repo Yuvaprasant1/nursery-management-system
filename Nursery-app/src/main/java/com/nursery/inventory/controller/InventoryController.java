@@ -27,6 +27,7 @@ public class InventoryController {
     @GetMapping
     public ResponseEntity<ApiResponse<?>> findAll(
             @RequestParam(required = true, name = "nurseryId") String nurseryId,
+            @RequestParam(required = false, name = "search") String search,
             @RequestParam(required = false, name = "page") Integer page,
             @RequestParam(required = false, name = "size") Integer size) {
         
@@ -35,12 +36,12 @@ public class InventoryController {
             int pageNumber = (page != null && page >= 0) ? page : 0;
             int pageSize = (size != null && size > 0) ? size : 20;
             PageRequest pageRequest = PageRequest.of(pageNumber, pageSize);
-            PaginatedResponseDTO<InventoryResponseDTO> paginatedResult = inventoryService.findAllPaginated(nurseryId, pageRequest);
+            PaginatedResponseDTO<InventoryResponseDTO> paginatedResult = inventoryService.findAllPaginated(nurseryId, search, pageRequest);
             return ResponseEntity.ok(ApiResponse.success(paginatedResult));
         }
         
         // Otherwise, return all results (backward compatibility)
-        List<InventoryResponseDTO> inventories = inventoryService.findAll(nurseryId);
+        List<InventoryResponseDTO> inventories = inventoryService.findAll(nurseryId, search);
         return ResponseEntity.ok(ApiResponse.success(inventories));
     }
     

@@ -85,6 +85,7 @@ export function NurseryProvider({ children }: { children: ReactNode }) {
 
   /**
    * Main nursery loading logic
+   * Uses cached data immediately, then fetches fresh data in background
    */
   useEffect(() => {
     const loadNursery = async () => {
@@ -96,11 +97,22 @@ export function NurseryProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      // Try to load from cache first
+      // Try to load from cache first for instant response
       const cachedNursery = getCachedNursery()
       if (cachedNursery) {
         setNurseryState(cachedNursery)
-        setIsWaiting(false)
+        setIsWaiting(false) // Don't wait for API - show cached data immediately
+        
+        // Fetch fresh data in background
+        if (user.nurseryId) {
+          fetchNursery(user.nurseryId).then((freshNursery) => {
+            if (freshNursery) {
+              setNurseryState(freshNursery)
+            }
+          }).catch(() => {
+            // Keep cached data on error
+          })
+        }
         return
       }
 

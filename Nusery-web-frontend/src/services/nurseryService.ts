@@ -1,6 +1,6 @@
 import apiClient from '@/api/client'
 import { ApiResponse } from '@/api/types'
-import { Nursery } from '@/types/nursery'
+import { Nursery, NurseryRequest } from '@/types/nursery'
 import { API_ENDPOINTS } from '@/constants'
 
 export const nurseryApi = {
@@ -17,6 +17,14 @@ export const nurseryApi = {
    */
   getNurseryById: async (id: string): Promise<Nursery> => {
     const response = await apiClient.get<ApiResponse<Nursery>>(`${API_ENDPOINTS.NURSERY}/${id}`)
+    return response.data.data
+  },
+
+  /**
+   * Update nursery details
+   */
+  updateNursery: async (id: string, data: NurseryRequest): Promise<Nursery> => {
+    const response = await apiClient.put<ApiResponse<Nursery>>(`${API_ENDPOINTS.NURSERY}/${id}`, data)
     return response.data.data
   },
 
