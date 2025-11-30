@@ -1,0 +1,68 @@
+package com.nursery.auth.controller;
+
+import com.nursery.common.dto.ApiResponse;
+import com.nursery.common.util.SecurityUtil;
+import com.nursery.auth.dto.request.LoginRequestDTO;
+import com.nursery.auth.dto.response.AuthResponseDTO;
+import com.nursery.auth.service.AuthService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/auth")
+@RequiredArgsConstructor
+@Tag(name = "Authentication", description = "Authentication and authorization endpoints")
+public class AuthController {
+    
+    private final AuthService authService;
+    
+    @PostMapping("/login")
+    @Operation(summary = "User login", description = "Authenticates a user and returns a JWT token")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200", 
+            description = "Login successful",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "400", 
+            description = "Invalid credentials or validation error"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "429", 
+            description = "Rate limit exceeded")
+    })
+    public ResponseEntity<ApiResponse<AuthResponseDTO>> login(@Valid @RequestBody LoginRequestDTO request) {
+        AuthResponseDTO response = authService.login(request);
+        return ResponseEntity.status(HttpStatus.OK)
+            .body(ApiResponse.success("Login successful", response));
+    }
+    
+    @GetMapping("/me")
+    @Operation(summary = "Get current user", description = "Returns the currently authenticated user's information")
+    @ApiResponses(value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200", 
+            description = "User information retrieved successfully",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401", 
+            description = "Unauthorized - Invalid or missing token")
+    })
+    public ResponseEntity<ApiResponse<AuthResponseDTO>> getCurrentUser() {
+        String phone = SecurityUtil.getCurrentUserPhone();
+        AuthResponseDTO response = authService.getCurrentUser(phone);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+}
+
+
+
+
+
