@@ -50,6 +50,29 @@ public class InventoryFirestoreRepository extends BaseFirestoreRepository<Invent
         return !results.isEmpty();
     }
     
+    public List<InventoryDocument> findByBreedIds(String nurseryId, List<String> breedIds) {
+        if (breedIds == null || breedIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // Firestore "in" query supports up to 10 values
+        // If more than 10, we need to split into multiple queries
+        List<InventoryDocument> allResults = new ArrayList<>();
+        int batchSize = 10;
+        
+        for (int i = 0; i < breedIds.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, breedIds.size());
+            List<String> batch = breedIds.subList(i, end);
+            
+            Query query = buildQuery()
+                .whereEqualTo("nurseryId", nurseryId)
+                .whereIn("breedId", batch);
+            allResults.addAll(executeQuery(query));
+        }
+        
+        return allResults;
+    }
+    
     public PageResult<InventoryDocument> findByNurseryIdPaginated(String nurseryId, PageRequest pageRequest) {
         Query query = buildQuery()
             .whereEqualTo("nurseryId", nurseryId)

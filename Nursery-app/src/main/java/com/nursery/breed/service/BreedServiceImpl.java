@@ -202,7 +202,9 @@ public class BreedServiceImpl implements BreedService {
     public BreedResponseDTO update(String id, BreedRequestDTO request) {
         BreedDocument breed = findByIdEntity(id);
         
-        // Validate sapling exists and belongs to nursery
+        // NOTE: nurseryId and saplingId from request are validated but NOT updated
+        // Key ID fields (nurseryId, saplingId, breedId, inventoryId, transactionId) are immutable in update operations
+        // Validate sapling exists and belongs to nursery (used for validation only, not for updating)
         saplingService.validateExists(request.getSaplingId());
         SaplingDocument sapling = saplingService.findByIdEntity(request.getSaplingId());
         if (!sapling.getNurseryId().equals(request.getNurseryId())) {
@@ -217,6 +219,7 @@ public class BreedServiceImpl implements BreedService {
             throw new ValidationException("Breed name already exists for this sapling");
         }
         
+        // Explicitly DO NOT update: breed.setNurseryId() or breed.setSaplingId() - ID fields are immutable
         breed.setBreedName(request.getBreedName());
         breed.setMode(request.getMode());
         breed.setItemsPerSlot(request.getItemsPerSlot());

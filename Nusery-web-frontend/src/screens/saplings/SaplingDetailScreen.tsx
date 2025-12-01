@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { saplingApi } from './api/saplingApi'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -13,6 +14,7 @@ import { ROUTES } from '@/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { ButtonAction, ConfirmationVariant } from '@/enums'
 import { Sapling } from './models/types'
+import { Tooltip } from '@/components/Tooltip'
 
 export default function SaplingDetailScreen() {
   const { id } = useParams<{ id: string }>()
@@ -109,25 +111,35 @@ export default function SaplingDetailScreen() {
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => router.push(ROUTES.SAPLINGS)}>
-            ← Back to Saplings
-          </Button>
+          <Tooltip content="Back to Saplings" position="bottom">
+            <Button variant="outline" onClick={() => router.push(ROUTES.SAPLINGS)} className="p-2" aria-label="Go back to saplings">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Tooltip>
           <h1 className="text-3xl font-bold text-gray-900">{sapling.name}</h1>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`${ROUTES.SAPLINGS}/${sapling.id}/edit`)}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="danger"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
-          </Button>
+          <Tooltip content="Edit sapling" position="bottom">
+            <Button
+              variant="outline"
+              onClick={() => router.push(`${ROUTES.SAPLINGS}/${sapling.id}/edit`)}
+              className="p-2"
+              aria-label="Edit sapling"
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE} position="bottom">
+            <Button
+              variant="danger"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="p-2"
+              aria-label="Delete sapling"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </Tooltip>
         </div>
       </div>
 
@@ -145,22 +157,22 @@ export default function SaplingDetailScreen() {
               </div>
             )}
           </div>
+          {sapling.imageUrl && (
+            <div>
+              <label className="text-sm font-medium text-gray-500">Image</label>
+              <div className="mt-2">
+                <img
+                  src={sapling.imageUrl}
+                  alt={sapling.name}
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+              </div>
+            </div>
+          )}
         </Card>
 
         <Card title="Additional Information">
           <div className="space-y-4">
-            {sapling.imageUrl && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Image</label>
-                <div className="mt-2">
-                  <img
-                    src={sapling.imageUrl}
-                    alt={sapling.name}
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                </div>
-              </div>
-            )}
             <div>
               <label className="text-sm font-medium text-gray-500">Created At</label>
               <p className="text-gray-900 mt-1">

@@ -1,6 +1,6 @@
 import apiClient from '@/api/client'
 import { ApiResponse, PaginatedResponse } from '@/api/types'
-import { Transaction } from '../models/types'
+import { Transaction, TransactionRequest } from '../models/types'
 import { TransactionType } from '@/enums'
 
 // Backend response type
@@ -43,7 +43,8 @@ export const transactionApi = {
     breedId?: string,
     nurseryId?: string,
     page?: number,
-    size?: number
+    size?: number,
+    saplingId?: string
   ): Promise<Transaction[] | PaginatedResponse<Transaction>> => {
     let url = '/transactions'
     const params = new URLSearchParams()
@@ -52,6 +53,9 @@ export const transactionApi = {
     }
     if (nurseryId) {
       params.append('nurseryId', nurseryId)
+    }
+    if (saplingId) {
+      params.append('saplingId', saplingId)
     }
     if (page !== undefined || size !== undefined) {
       params.append('page', String(page ?? 0))
@@ -85,6 +89,11 @@ export const transactionApi = {
   
   softDeleteTransaction: async (id: string): Promise<void> => {
     await apiClient.post(`/transactions/${id}/soft-delete`)
+  },
+
+  updateTransaction: async (id: string, data: Partial<TransactionRequest>): Promise<Transaction> => {
+    const response = await apiClient.put<ApiResponse<TransactionResponse>>(`/transactions/${id}`, data)
+    return transformTransaction(response.data.data)
   },
 }
 

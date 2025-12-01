@@ -107,6 +107,18 @@ export function SaplingFilter({
 
   const displayText = selectedSapling ? selectedSapling.name : 'All Saplings'
 
+  // Prevent body scroll when dropdown is open on mobile
+  useEffect(() => {
+    if (isOpen && typeof window !== 'undefined' && window.innerWidth < 640) {
+      const originalOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = originalOverflow
+      }
+    }
+    return undefined
+  }, [isOpen])
+
   // Always use compact version
   return (
     <div className={cn('relative', className)} ref={dropdownRef}>
@@ -154,10 +166,26 @@ export function SaplingFilter({
       </button>
 
       {isOpen && (
-        <div
-          className="absolute z-50 mt-1 w-56 bg-white border border-gray-300 rounded-md shadow-lg max-h-64 overflow-hidden"
-          role="listbox"
-        >
+        <>
+          {/* Mobile: Full-screen overlay */}
+          <div
+            className="fixed inset-0 bg-black/20 z-40 sm:hidden"
+            onClick={() => setIsOpen(false)}
+            aria-hidden="true"
+          />
+          {/* Dropdown: Bottom sheet on mobile, dropdown on desktop */}
+          <div
+            className={cn(
+              'z-50 bg-white border border-gray-300 shadow-lg overflow-hidden',
+              // Mobile: Bottom sheet style
+              'fixed sm:absolute',
+              'inset-x-0 bottom-0 sm:inset-x-auto sm:bottom-auto',
+              'sm:mt-1 sm:right-0 sm:w-56',
+              'rounded-t-lg sm:rounded-md',
+              'max-h-[70vh] sm:max-h-64'
+            )}
+            role="listbox"
+          >
           <div className="p-1.5 border-b border-gray-200">
             <Input
               type="text"
@@ -168,7 +196,7 @@ export function SaplingFilter({
               autoFocus
             />
           </div>
-          <div className="overflow-y-auto max-h-56">
+          <div className="overflow-y-auto max-h-[calc(70vh-4rem)] sm:max-h-56">
             {isLoading && !providedSaplings ? (
               <div className="flex items-center justify-center py-3">
                 <LoadingSpinner size="sm" />
@@ -213,7 +241,8 @@ export function SaplingFilter({
               </>
             )}
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   )

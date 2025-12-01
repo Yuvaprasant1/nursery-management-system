@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import { breedApi } from './api/breedApi'
 import { saplingApi } from '@/screens/saplings/api/saplingApi'
 import { SaplingFilter } from '@/components/Filter/SaplingFilter'
+import { ResponsiveListCard } from '@/components/ResponsiveListCard'
+import { ResponsiveFilterBar } from '@/components/ResponsiveFilterBar'
+import { IconButton } from '@/components/IconButton'
 import { Sapling } from '@/screens/saplings/models/types'
 import { useConfirmationDialog } from '@/components/ConfirmationDialog/useConfirmationDialog'
 import { useToast } from '@/components/Toaster/useToast'
 import { useNursery } from '@/contexts/NurseryContext'
-import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { ErrorState } from '@/components/Error/ErrorState'
@@ -181,15 +183,18 @@ export default function BreedsScreen() {
   
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Breeds</h1>
-        <Button onClick={() => router.push(ROUTES.BREEDS + '/new')}>
-          Add New Breed
-        </Button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Breeds</h1>
+        <IconButton
+          action="add"
+          onClick={() => router.push(ROUTES.BREEDS + '/new')}
+          label="Add New Breed"
+          size="md"
+        />
       </div>
       
-      <div className="flex items-center gap-2">
-        <div className="flex-1 max-w-xs">
+      <ResponsiveFilterBar>
+        <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm">
           <Input
             placeholder="Search breeds..."
             value={searchTerm}
@@ -202,52 +207,46 @@ export default function BreedsScreen() {
           onSelect={handleSaplingSelect}
           saplings={saplings}
         />
-      </div>
+      </ResponsiveFilterBar>
       
       {breeds.length > 0 ? (
         <>
-          <div className="grid gap-4">
+          <div className="space-y-3 sm:space-y-4">
             {breeds.map((breed) => (
-              <Card key={breed.id} className="p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{breed.name}</h3>
-                    {breed.description && (
-                      <p className="text-sm text-gray-600 mt-1">{breed.description}</p>
+              <ResponsiveListCard
+                key={breed.id}
+                title={breed.name}
+                description={breed.description}
+                metadata={
+                  <>
+                    <span>Mode: {breed.mode || 'INDIVIDUAL'}</span>
+                    {breed.mode === 'SLOT' && breed.itemsPerSlot && (
+                      <span>Items per slot: {breed.itemsPerSlot}</span>
                     )}
-                    <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                      <span>Mode: {breed.mode || 'INDIVIDUAL'}</span>
-                      {breed.mode === 'SLOT' && breed.itemsPerSlot && (
-                        <span>Items per slot: {breed.itemsPerSlot}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push(`${ROUTES.BREEDS}/${breed.id}`)}
-                    >
-                      View
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push(`${ROUTES.BREEDS}/${breed.id}/edit`)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDelete(breed.id, breed.name)}
-                      disabled={isDeleting}
-                    >
-                      {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+                  </>
+                }
+                actions={[
+                  {
+                    action: 'view',
+                    label: 'View',
+                    onClick: () => router.push(`${ROUTES.BREEDS}/${breed.id}`),
+                    variant: 'outline',
+                  },
+                  {
+                    action: 'edit',
+                    label: 'Edit',
+                    onClick: () => router.push(`${ROUTES.BREEDS}/${breed.id}/edit`),
+                    variant: 'outline',
+                  },
+                  {
+                    action: 'delete',
+                    label: isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE,
+                    onClick: () => handleDelete(breed.id, breed.name),
+                    variant: 'danger',
+                    disabled: isDeleting,
+                  },
+                ]}
+              />
             ))}
           </div>
           

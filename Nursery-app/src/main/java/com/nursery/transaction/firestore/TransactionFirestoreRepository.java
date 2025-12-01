@@ -33,6 +33,56 @@ public class TransactionFirestoreRepository extends BaseFirestoreRepository<Tran
         return TransactionDocument.class;
     }
     
+    /**
+     * Find non-deleted transactions by a list of breed IDs with pagination.
+     * This is used for sapling-based filtering (sapling -> breeds -> transactions).
+     */
+    public PageResult<TransactionDocument> findByBreedIdsAndNotDeletedPaginated(
+            java.util.List<String> breedIds,
+            PageRequest pageRequest
+    ) {
+        if (breedIds == null || breedIds.isEmpty()) {
+            return PageResult.of(java.util.Collections.emptyList(), pageRequest, 0);
+        }
+        
+        // Firestore whereIn supports up to 10 values; if we ever have more, we can
+        // split into multiple queries, but for now we assume a sapling won't have
+        // an excessive number of breeds.
+        Query query = buildQuery()
+            .whereIn("breedId", breedIds)
+            .whereEqualTo("isDeleted", false)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(pageRequest.getEffectiveSize());
+        
+        if (pageRequest.getOffset() > 0) {
+            query = query.offset(pageRequest.getOffset());
+        }
+        
+        try {
+            ApiFuture<QuerySnapshot> future = query.get();
+            QuerySnapshot querySnapshot = future.get();
+            
+            List<TransactionDocument> documents = new ArrayList<>();
+            for (QueryDocumentSnapshot document : querySnapshot.getDocuments()) {
+                documents.add(FirestoreConverter.toDocument(document, getDocumentClass()));
+            }
+            
+            // Get total count for these breedIds
+            Query countQuery = buildQuery()
+                .whereIn("breedId", breedIds)
+                .whereEqualTo("isDeleted", false);
+            List<TransactionDocument> allResults = executeQuery(countQuery);
+            long totalElements = allResults.size();
+            
+            return PageResult.of(documents, pageRequest, totalElements);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Query interrupted", e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Failed to execute query", e);
+        }
+    }
+    
     public List<TransactionDocument> findByBreedIdAndNotDeleted(String breedId) {
         Query query = buildQuery()
             .whereEqualTo("breedId", breedId)

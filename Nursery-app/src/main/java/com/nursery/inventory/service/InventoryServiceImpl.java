@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -29,24 +28,47 @@ public class InventoryServiceImpl implements InventoryService {
     private final BreedFirestoreRepository breedRepository;
     
     @Override
-    public List<InventoryResponseDTO> findAll(String nurseryId, String search) {
-        List<InventoryDocument> inventories = repository.findByNurseryId(nurseryId);
+    public List<InventoryResponseDTO> findAll(String nurseryId, String saplingId, String search) {
+        // Get breeds first (optimized approach - similar to BreedService)
+        List<com.nursery.breed.firestore.BreedDocument> breeds;
+        
+        if (saplingId != null && !saplingId.isEmpty()) {
+            breeds = breedRepository.findBySaplingIdAndNotDeleted(saplingId);
+        } else {
+            breeds = breedRepository.findByNurseryIdAndNotDeleted(nurseryId);
+        }
         
         // Filter by search term if provided (search by breed name)
         if (search != null && !search.trim().isEmpty()) {
             String searchLower = search.toLowerCase().trim();
-            // Get all breeds for the nursery and filter by search term
-            List<com.nursery.breed.firestore.BreedDocument> breeds = breedRepository.findByNurseryIdAndNotDeleted(nurseryId);
-            Set<String> matchingBreedIds = breeds.stream()
+            breeds = breeds.stream()
                 .filter(b -> b.getBreedName().toLowerCase().contains(searchLower))
-                .map(com.nursery.breed.firestore.BreedDocument::getId)
-                .collect(Collectors.toSet());
-            
-            // Filter inventory by matching breed IDs
-            inventories = inventories.stream()
-                .filter(inv -> matchingBreedIds.contains(inv.getBreedId()))
                 .collect(Collectors.toList());
         }
+        
+        // Get breed IDs from filtered breeds
+        List<String> breedIds = breeds.stream()
+            .map(com.nursery.breed.firestore.BreedDocument::getId)
+            .collect(Collectors.toList());
+        
+        // Get inventory by breed IDs (or by nurseryId if no breeds)
+        List<InventoryDocument> inventories;
+        if (!breedIds.isEmpty()) {
+            inventories = repository.findByBreedIds(nurseryId, breedIds);
+        } else {
+            // No breeds match, return empty list
+            inventories = new java.util.ArrayList<>();
+        }
+        
+        // Sort by updatedAt descending (similar to BreedService)
+        inventories = inventories.stream()
+            .sorted((a, b) -> {
+                if (a.getUpdatedAt() == null && b.getUpdatedAt() == null) return 0;
+                if (a.getUpdatedAt() == null) return 1;
+                if (b.getUpdatedAt() == null) return -1;
+                return b.getUpdatedAt().compareTo(a.getUpdatedAt());
+            })
+            .collect(Collectors.toList());
         
         return inventories.stream()
             .map(this::toResponseDTO)
@@ -54,25 +76,47 @@ public class InventoryServiceImpl implements InventoryService {
     }
     
     @Override
-    public PaginatedResponseDTO<InventoryResponseDTO> findAllPaginated(String nurseryId, String search, PageRequest pageRequest) {
-        // Get all inventories first (for search filtering)
-        List<InventoryDocument> allInventories = repository.findByNurseryId(nurseryId);
+    public PaginatedResponseDTO<InventoryResponseDTO> findAllPaginated(String nurseryId, String saplingId, String search, PageRequest pageRequest) {
+        // Get breeds first (optimized approach - similar to BreedService)
+        List<com.nursery.breed.firestore.BreedDocument> breeds;
+        
+        if (saplingId != null && !saplingId.isEmpty()) {
+            breeds = breedRepository.findBySaplingIdAndNotDeleted(saplingId);
+        } else {
+            breeds = breedRepository.findByNurseryIdAndNotDeleted(nurseryId);
+        }
         
         // Filter by search term if provided (search by breed name)
         if (search != null && !search.trim().isEmpty()) {
             String searchLower = search.toLowerCase().trim();
-            // Get all breeds for the nursery and filter by search term
-            List<com.nursery.breed.firestore.BreedDocument> breeds = breedRepository.findByNurseryIdAndNotDeleted(nurseryId);
-            Set<String> matchingBreedIds = breeds.stream()
+            breeds = breeds.stream()
                 .filter(b -> b.getBreedName().toLowerCase().contains(searchLower))
-                .map(com.nursery.breed.firestore.BreedDocument::getId)
-                .collect(Collectors.toSet());
-            
-            // Filter inventory by matching breed IDs
-            allInventories = allInventories.stream()
-                .filter(inv -> matchingBreedIds.contains(inv.getBreedId()))
                 .collect(Collectors.toList());
         }
+        
+        // Get breed IDs from filtered breeds
+        List<String> breedIds = breeds.stream()
+            .map(com.nursery.breed.firestore.BreedDocument::getId)
+            .collect(Collectors.toList());
+        
+        // Get inventory by breed IDs (or by nurseryId if no breeds)
+        List<InventoryDocument> allInventories;
+        if (!breedIds.isEmpty()) {
+            allInventories = repository.findByBreedIds(nurseryId, breedIds);
+        } else {
+            // No breeds match, return empty list
+            allInventories = new java.util.ArrayList<>();
+        }
+        
+        // Sort by updatedAt descending (similar to BreedService)
+        allInventories = allInventories.stream()
+            .sorted((a, b) -> {
+                if (a.getUpdatedAt() == null && b.getUpdatedAt() == null) return 0;
+                if (a.getUpdatedAt() == null) return 1;
+                if (b.getUpdatedAt() == null) return -1;
+                return b.getUpdatedAt().compareTo(a.getUpdatedAt());
+            })
+            .collect(Collectors.toList());
         
         // Apply pagination
         long totalElements = allInventories.size();

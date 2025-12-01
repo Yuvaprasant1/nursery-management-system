@@ -3,11 +3,11 @@ package com.nursery.common.firestore;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 
 public class FirestoreConverter {
     
@@ -31,6 +31,34 @@ public class FirestoreConverter {
         if (value instanceof com.google.cloud.Timestamp) {
             return ((com.google.cloud.Timestamp) value).toDate().toInstant()
                     .atZone(ZoneId.systemDefault()).toLocalDateTime();
+        }
+        return null;
+    }
+    
+    /**
+     * Converts a value from Firestore to BigDecimal.
+     * Firestore stores numbers as Double, so we need to convert them back to BigDecimal.
+     * 
+     * @param value the value from Firestore (can be Double, Number, String, or BigDecimal)
+     * @return BigDecimal representation of the value, or null if value is null or cannot be converted
+     */
+    public static BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            // Firestore stores numbers as Double, convert to BigDecimal
+            return BigDecimal.valueOf(((Number) value).doubleValue());
+        }
+        if (value instanceof String) {
+            try {
+                return new BigDecimal((String) value);
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
         return null;
     }
@@ -60,6 +88,8 @@ public class FirestoreConverter {
                         // Handle special types
                         if (field.getType() == LocalDateTime.class) {
                             field.set(document, toLocalDateTime(value));
+                        } else if (field.getType() == BigDecimal.class) {
+                            field.set(document, toBigDecimal(value));
                         } else if (field.getType() == Long.class && value instanceof Number) {
                             field.set(document, ((Number) value).longValue());
                         } else if (field.getType() == Integer.class && value instanceof Number) {
@@ -98,6 +128,9 @@ public class FirestoreConverter {
                         // Handle special types
                         if (value instanceof LocalDateTime) {
                             map.put(key, com.google.cloud.Timestamp.of(toDate((LocalDateTime) value)));
+                        } else if (value instanceof BigDecimal) {
+                            // Firestore doesn't support BigDecimal natively, convert to Double
+                            map.put(key, ((BigDecimal) value).doubleValue());
                         } else if (value instanceof Enum) {
                             map.put(key, ((Enum<?>) value).name());
                         } else {

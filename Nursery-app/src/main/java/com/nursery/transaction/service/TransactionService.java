@@ -9,10 +9,11 @@ import java.util.List;
 
 public interface TransactionService {
     TransactionResponseDTO createTransaction(String breedId, TransactionRequestDTO request);
+    TransactionResponseDTO updateTransaction(String transactionId, TransactionRequestDTO request);
     void softDeleteTransaction(String transactionId);
     void undoTransaction(String transactionId);
     List<TransactionResponseDTO> findAll(String breedId);
-    PaginatedResponseDTO<TransactionResponseDTO> findAllPaginated(String breedId, String nurseryId, PageRequest pageRequest);
+    PaginatedResponseDTO<TransactionResponseDTO> findAllPaginated(String breedId, String nurseryId, String saplingId, PageRequest pageRequest);
     TransactionResponseDTO findById(String id);
 }
 

@@ -6,6 +6,23 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNursery } from '@/contexts/NurseryContext'
 import { ROUTES } from '@/constants'
+import { Tooltip } from '@/components/Tooltip'
+import { 
+  LayoutDashboard, 
+  Package, 
+  Sprout, 
+  Leaf, 
+  Receipt, 
+  Settings, 
+  Building2, 
+  Palette,
+  ChevronRight,
+  ChevronLeft,
+  X,
+  Menu,
+  LogOut
+} from 'lucide-react'
+import { LucideIcon } from 'lucide-react'
 
 interface LayoutProps {
   children: ReactNode
@@ -14,7 +31,7 @@ interface LayoutProps {
 interface MenuItem {
   path: string
   label: string
-  icon: string
+  icon: LucideIcon
   children?: MenuItem[]
 }
 
@@ -64,18 +81,18 @@ export default function Layout({ children }: LayoutProps) {
   }
   
   const menuItems: MenuItem[] = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { path: '/inventory', label: 'Inventory', icon: '📦' },
-    { path: '/saplings', label: 'Sapling', icon: '🌱' },
-    { path: '/breeds', label: 'Breeds', icon: '🌿' },
-    { path: '/transactions', label: 'Transactions', icon: '💰' },
+    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/inventory', label: 'Inventory', icon: Package },
+    { path: '/saplings', label: 'Sapling', icon: Sprout },
+    { path: '/breeds', label: 'Breeds', icon: Leaf },
+    { path: '/transactions', label: 'Transactions', icon: Receipt },
     {
       path: '/admin',
       label: 'Admin',
-      icon: '⚙️',
+      icon: Settings,
       children: [
-        { path: ROUTES.ADMIN_NURSERY, label: 'Nursery', icon: '🏢' },
-        { path: ROUTES.ADMIN_THEME, label: 'Theme Settings', icon: '🎨' },
+        { path: ROUTES.ADMIN_NURSERY, label: 'Nursery', icon: Building2 },
+        { path: ROUTES.ADMIN_THEME, label: 'Theme Settings', icon: Palette },
       ],
     },
   ]
@@ -145,27 +162,28 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             )}
             <div className="flex items-center gap-2">
-              <button
-                onClick={toggleSidebar}
-                className="hidden lg:flex text-white hover:text-white/80 p-1 rounded transition-colors"
-                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <Tooltip content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} position="bottom">
+                <button
+                  onClick={toggleSidebar}
+                  className="hidden lg:flex text-white hover:text-white/80 p-1 rounded transition-colors"
+                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
                   {sidebarCollapsed ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    <ChevronRight className="w-5 h-5" aria-hidden="true" />
                   ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    <ChevronLeft className="w-5 h-5" aria-hidden="true" />
                   )}
-                </svg>
-              </button>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden text-white hover:text-white/80 ml-2"
-                aria-label="Close sidebar"
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
+                </button>
+              </Tooltip>
+              <Tooltip content="Close sidebar" position="bottom">
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="lg:hidden text-white hover:text-white/80 ml-2"
+                  aria-label="Close sidebar"
+                >
+                  <X className="w-5 h-5" aria-hidden="true" />
+                </button>
+              </Tooltip>
             </div>
           </div>
           
@@ -175,6 +193,7 @@ export default function Layout({ children }: LayoutProps) {
                 const hasChildren = item.children && item.children.length > 0
                 const isExpanded = expandedMenus.has(item.path)
                 const itemIsActive = isActive(item.path)
+                const ItemIcon = item.icon
 
                 return (
                   <li key={item.path}>
@@ -193,41 +212,39 @@ export default function Layout({ children }: LayoutProps) {
                               ? 'bg-primary text-white shadow-md'
                               : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                           }`}
-                          title={sidebarCollapsed ? item.label : undefined}
                         >
-                          <span className="text-lg flex-shrink-0">{item.icon}</span>
+                          <ItemIcon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
                           {!sidebarCollapsed && (
                             <>
                               <span className="font-medium truncate flex-1 text-left">{item.label}</span>
-                              <svg
+                              <ChevronRight
                                 className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
+                                aria-hidden="true"
+                              />
                             </>
                           )}
                         </button>
                         {!sidebarCollapsed && isExpanded && item.children && (
                           <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-2">
-                            {item.children.map((child) => (
-                              <li key={child.path}>
-                                <Link
-                                  href={child.path}
-                                  onClick={() => setSidebarOpen(false)}
-                                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 ${
-                                    isActive(child.path)
-                                      ? 'bg-primary text-white shadow-md'
-                                      : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
-                                  }`}
-                                >
-                                  <span className="text-lg flex-shrink-0">{child.icon}</span>
-                                  <span className="font-medium truncate">{child.label}</span>
-                                </Link>
-                              </li>
-                            ))}
+                            {item.children.map((child) => {
+                              const ChildIcon = child.icon
+                              return (
+                                <li key={child.path}>
+                                  <Link
+                                    href={child.path}
+                                    onClick={() => setSidebarOpen(false)}
+                                    className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 ${
+                                      isActive(child.path)
+                                        ? 'bg-primary text-white shadow-md'
+                                        : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
+                                    }`}
+                                  >
+                                    <ChildIcon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                                    <span className="font-medium truncate">{child.label}</span>
+                                  </Link>
+                                </li>
+                              )
+                            })}
                           </ul>
                         )}
                       </>
@@ -242,9 +259,8 @@ export default function Layout({ children }: LayoutProps) {
                             ? 'bg-primary text-white shadow-md'
                             : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                         }`}
-                        title={sidebarCollapsed ? item.label : undefined}
                       >
-                        <span className="text-lg flex-shrink-0">{item.icon}</span>
+                        <ItemIcon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
                         {!sidebarCollapsed && <span className="font-medium truncate">{item.label}</span>}
                       </Link>
                     )}
@@ -278,19 +294,20 @@ export default function Layout({ children }: LayoutProps) {
             )}
             {sidebarCollapsed && (
               <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center">
-                  {user?.phone?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                  aria-label="Logout"
-                  title="Logout"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                </button>
+                <Tooltip content={user?.phone || 'User'} position="right">
+                  <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center">
+                    {user?.phone?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                </Tooltip>
+                <Tooltip content="Logout" position="right">
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                    aria-label="Logout"
+                  >
+                    <LogOut className="w-5 h-5" aria-hidden="true" />
+                  </button>
+                </Tooltip>
               </div>
             )}
           </div>
@@ -305,16 +322,16 @@ export default function Layout({ children }: LayoutProps) {
         <header className="sticky top-0 z-30 bg-white shadow-sm border-b border-gray-200">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden text-gray-500 hover:text-gray-700"
-                aria-label="Open sidebar"
-                aria-expanded={sidebarOpen}
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
+              <Tooltip content="Open sidebar" position="bottom">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden text-gray-500 hover:text-gray-700"
+                  aria-label="Open sidebar"
+                  aria-expanded={sidebarOpen}
+                >
+                  <Menu className="w-6 h-6" aria-hidden="true" />
+                </button>
+              </Tooltip>
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-semibold text-gray-900">
                   {getPageTitle()}

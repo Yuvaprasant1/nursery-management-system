@@ -1,5 +1,6 @@
 package com.nursery.transaction.service;
 
+import com.nursery.common.firestore.BaseDocument;
 import com.nursery.transaction.enumeration.TransactionType;
 import com.nursery.common.dto.PaginatedResponseDTO;
 import com.nursery.common.exception.EntityNotFoundException;
@@ -37,6 +38,9 @@ public class TransactionServiceImpl implements TransactionService {
         // Validate breed exists (read before transaction)
         com.nursery.breed.firestore.BreedDocument breed = breedService.findByIdEntity(breedId);
         
+        // Validate delta based on transaction type
+        validateTransactionRequest(request);
+        
         // Calculate effective delta based on transaction type
         int effectiveDelta = calculateEffectiveDelta(request);
         
@@ -44,11 +48,7 @@ public class TransactionServiceImpl implements TransactionService {
         final String inventoryId;
         Optional<com.nursery.inventory.firestore.InventoryDocument> existingInventory = 
             inventoryRepository.findByBreedId(breedId);
-        if (existingInventory.isPresent()) {
-            inventoryId = existingInventory.get().getId();
-        } else {
-            inventoryId = null;
-        }
+        inventoryId = existingInventory.map(BaseDocument::getId).orElse(null);
         
         // Use Firestore transaction for atomic operation with retry support
         // IMPORTANT: All reads must be done before any writes
@@ -99,20 +99,94 @@ public class TransactionServiceImpl implements TransactionService {
         });
     }
 
-    private int calculateEffectiveDelta(TransactionRequestDTO request) {
+    @Override
+    public TransactionResponseDTO updateTransaction(String transactionId, TransactionRequestDTO request) {
+        // Read transaction before starting transaction (validation)
+        TransactionDocument existingTransaction = repository.findById(transactionId)
+            .filter(t -> !Boolean.TRUE.equals(t.getIsDeleted()))
+            .orElseThrow(() -> new EntityNotFoundException("Transaction", transactionId));
+        
+        // Prevent editing of COMPENSATION transactions
+        if (existingTransaction.getType() == TransactionType.COMPENSATION) {
+            throw new ValidationException("COMPENSATION transactions cannot be edited");
+        }
+        
+        // Breed cannot be changed - it's part of transaction identity
+        // Note: TransactionRequestDTO doesn't include breedId, so it cannot be changed
+        
+        // Validate delta based on transaction type
+        validateTransactionRequest(request);
+        
+        // Get inventory ID before transaction
+        com.nursery.inventory.firestore.InventoryDocument inventory = inventoryService.findByBreedIdEntity(existingTransaction.getBreedId());
+        String inventoryId = inventory.getId();
+        
+        // Calculate old and new effective deltas
+        int oldEffectiveDelta = existingTransaction.getDelta() != null ? existingTransaction.getDelta() : 0;
+        int newEffectiveDelta = calculateEffectiveDelta(request);
+        
+        // Use Firestore transaction for atomic update
+        return repository.runInTransaction(txn -> {
+            // ========== PHASE 1: ALL READS FIRST ==========
+            // Re-read transaction within transaction for consistency
+            TransactionDocument transactionInTxn = repository.findById(transactionId, txn)
+                .filter(t -> !Boolean.TRUE.equals(t.getIsDeleted()))
+                .orElseThrow(() -> new EntityNotFoundException("Transaction", transactionId));
+            
+            // Read inventory within transaction
+            com.nursery.inventory.firestore.InventoryDocument inventoryInTxn = inventoryRepository.findById(inventoryId, txn)
+                .orElseThrow(() -> new EntityNotFoundException("Inventory", inventoryId));
+            
+            // Calculate delta change: reverse old delta and apply new delta
+            int deltaChange = newEffectiveDelta - oldEffectiveDelta;
+            int newQuantity = inventoryInTxn.getQuantity() + deltaChange;
+            
+            // Validate inventory won't go negative
+            if (newQuantity < 0) {
+                throw new ValidationException("Insufficient inventory. Current quantity: " + inventoryInTxn.getQuantity() + 
+                    ", change: " + deltaChange);
+            }
+            
+            // ========== PHASE 2: ALL WRITES AFTER READS ==========
+            // Update transaction document
+            transactionInTxn.setType(request.getType());
+            transactionInTxn.setDelta(newEffectiveDelta);
+            transactionInTxn.setReason(request.getReason());
+            repository.save(transactionInTxn, txn);
+            
+            // Update inventory
+            inventoryInTxn.setQuantity(newQuantity);
+            inventoryRepository.save(inventoryInTxn, txn);
+            
+            log.info("Updated transaction: {} for breed: {} (delta change: {} -> {})", 
+                transactionId, existingTransaction.getBreedId(), oldEffectiveDelta, newEffectiveDelta);
+            return toResponseDTO(transactionInTxn);
+        });
+    }
+
+    private void validateTransactionRequest(TransactionRequestDTO request) {
         if (request.getDelta() == null) {
             throw new ValidationException("Delta is required");
         }
-        int delta = request.getDelta();
         TransactionType type = request.getType();
-
         if (type == null) {
             throw new ValidationException("Transaction type is required");
         }
+        
+        // ADJUST type allows both positive and negative values
+        // Other types (SELL, PLANTED) only allow positive values (no negative or zero)
+        if (type != TransactionType.ADJUST && request.getDelta() <= 0) {
+            throw new ValidationException("Transaction type " + type + " only accepts positive delta values");
+        }
+    }
+    
+    private int calculateEffectiveDelta(TransactionRequestDTO request) {
+        int delta = request.getDelta();
+        TransactionType type = request.getType();
 
         return switch (type) {
             case SELL -> -Math.abs(delta);
-            case PLANTED, RECEIVE -> Math.abs(delta);
+            case PLANTED -> Math.abs(delta);
             case ADJUST -> delta;
             case COMPENSATION -> throw new ValidationException("COMPENSATION transactions cannot be created manually");
         };
@@ -191,15 +265,49 @@ public class TransactionServiceImpl implements TransactionService {
     }
     
     @Override
-    public PaginatedResponseDTO<TransactionResponseDTO> findAllPaginated(String breedId, String nurseryId, PageRequest pageRequest) {
+    public PaginatedResponseDTO<TransactionResponseDTO> findAllPaginated(
+            String breedId,
+            String nurseryId,
+            String saplingId,
+            PageRequest pageRequest
+    ) {
         PageResult<TransactionDocument> pageResult;
-        
-        if (breedId != null && !breedId.isEmpty()) {
+
+        boolean hasBreed = breedId != null && !breedId.isEmpty();
+        boolean hasSapling = saplingId != null && !saplingId.isEmpty();
+
+        if (hasBreed && hasSapling) {
+            // Both sapling and breed selected: validate the relationship first
+            com.nursery.breed.firestore.BreedDocument breed =
+                breedRepository.findById(breedId).orElse(null);
+
+            if (breed == null || breed.getSaplingId() == null || !saplingId.equals(breed.getSaplingId())) {
+                // Breed does not belong to the sapling -> no matching transactions
+                pageResult = PageResult.of(java.util.Collections.emptyList(), pageRequest, 0);
+            } else {
+                pageResult = repository.findByBreedIdAndNotDeletedPaginated(breedId, pageRequest);
+            }
+        } else if (hasBreed) {
+            // Only breed provided: filter by breed
             pageResult = repository.findByBreedIdAndNotDeletedPaginated(breedId, pageRequest);
+        } else if (hasSapling) {
+            // Only sapling provided: find all breeds for this sapling, then filter by those breeds
+            List<com.nursery.breed.firestore.BreedDocument> breedsForSapling =
+                breedRepository.findBySaplingIdAndNotDeleted(saplingId);
+
+            if (breedsForSapling.isEmpty()) {
+                pageResult = PageResult.of(java.util.Collections.emptyList(), pageRequest, 0);
+            } else {
+                List<String> breedIds = breedsForSapling.stream()
+                    .map(com.nursery.breed.firestore.BreedDocument::getId)
+                    .collect(Collectors.toList());
+                pageResult = repository.findByBreedIdsAndNotDeletedPaginated(breedIds, pageRequest);
+            }
         } else if (nurseryId != null && !nurseryId.isEmpty()) {
+            // Fallback to nursery-wide transactions
             pageResult = repository.findByNurseryIdAndNotDeletedPaginated(nurseryId, pageRequest);
         } else {
-            throw new ValidationException("Either breedId or nurseryId must be provided");
+            throw new ValidationException("Either breedId, saplingId or nurseryId must be provided");
         }
         
         List<TransactionResponseDTO> content = pageResult.getContent().stream()

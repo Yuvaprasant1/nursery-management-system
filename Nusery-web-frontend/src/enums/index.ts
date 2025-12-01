@@ -11,10 +11,18 @@
  */
 export enum TransactionType {
   SELL = 'SELL',
-  RECEIVE = 'RECEIVE',
   PLANTED = 'PLANTED',
   ADJUST = 'ADJUST',
   COMPENSATION = 'COMPENSATION',
+}
+
+/**
+ * Payment type enumeration
+ * Represents the different types of payments
+ */
+export enum PaymentType {
+  INCOME = 'INCOME',
+  EXPENSE = 'EXPENSE',
 }
 
 /**
@@ -103,6 +111,7 @@ export enum ErrorMessage {
  */
 export enum SuccessMessage {
   TRANSACTION_CREATED = 'Transaction created successfully!',
+  TRANSACTION_DELETED = 'Transaction deleted successfully',
 }
 
 /**
@@ -123,7 +132,6 @@ export enum UIText {
   ADD_NOTES = 'Add any notes about this transaction...',
   ENTER_QUANTITY = 'Enter quantity',
   ADJUSTMENT_EXAMPLE = 'e.g., 10 or -5',
-  RECEIVE_INCREASE = 'Receive (Increase)',
   PLANTED_INCREASE = 'Planted (Increase)',
   SELL_DECREASE = 'Sell (Decrease)',
   ADJUST_POSITIVE_OR_NEGATIVE = 'Adjust (Positive or Negative)',
@@ -134,6 +142,11 @@ export enum UIText {
   NEW_TOTAL = 'New total:',
   WOULD_RESULT_IN_NEGATIVE_INVENTORY = '⚠️ This would result in negative inventory',
   INSUFFICIENT_INVENTORY = 'Insufficient inventory. Current quantity:',
+  NO_TRANSACTIONS_FOUND = 'No transactions found',
+  ALL_BREEDS = 'All Breeds',
+  SEARCH_BREEDS = 'Search breeds...',
+  NO_BREEDS_FOUND = 'No breeds found',
+  NO_BREEDS_AVAILABLE = 'No breeds available',
 }
 
 /**
@@ -142,7 +155,6 @@ export enum UIText {
  */
 export const TransactionTypeLabels: Record<TransactionType, string> = {
   [TransactionType.SELL]: UIText.SELL_DECREASE,
-  [TransactionType.RECEIVE]: UIText.RECEIVE_INCREASE,
   [TransactionType.PLANTED]: UIText.PLANTED_INCREASE,
   [TransactionType.ADJUST]: UIText.ADJUST_POSITIVE_OR_NEGATIVE,
   [TransactionType.COMPENSATION]: 'Compensation',

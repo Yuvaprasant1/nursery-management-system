@@ -6,10 +6,10 @@ import { inventoryApi } from './api/inventoryApi'
 import { breedApi } from '@/screens/breeds/api/breedApi'
 import { saplingApi } from '@/screens/saplings/api/saplingApi'
 import { SaplingFilter } from '@/components/Filter/SaplingFilter'
+import { ResponsiveTable, TableColumn } from '@/components/ResponsiveTable'
+import { ResponsiveFilterBar } from '@/components/ResponsiveFilterBar'
 import { Sapling } from '@/screens/saplings/models/types'
-import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
-import { Button } from '@/components/Button'
 import { Pagination } from '@/components/Pagination/Pagination'
 import { PaginatedResponse } from '@/api/types'
 import { useNursery } from '@/contexts/NurseryContext'
@@ -154,10 +154,10 @@ export default function InventoryScreen() {
 
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
+      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Inventory</h1>
       
-      <div className="flex items-center gap-2">
-        <div className="flex-1 max-w-xs">
+      <ResponsiveFilterBar>
+        <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm">
           <Input
             placeholder="Search by breed name..."
             value={searchTerm}
@@ -170,7 +170,7 @@ export default function InventoryScreen() {
           onSelect={handleSaplingSelect}
           saplings={saplings}
         />
-      </div>
+      </ResponsiveFilterBar>
       
       {isLoading ? (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -178,49 +178,39 @@ export default function InventoryScreen() {
         </div>
       ) : inventory.length > 0 ? (
         <>
-          <Card className="p-0">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Breed</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {inventory.map((item) => {
-                    const breedName = breedNameMap.get(item.breedId)
-                    const displayName = (typeof breedName === 'string' ? breedName : 'Unknown') as string
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {displayName}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm">
-                          <span className={cn(
-                            'font-semibold',
-                            item.quantity < 0 ? 'text-red-600' : 'text-gray-900'
-                          )}>
-                            {item.quantity}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => router.push(`${ROUTES.INVENTORY}/${item.breedId}`)}
-                          >
-                            View Details
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <ResponsiveTable
+            columns={[
+              {
+                key: 'breedName',
+                header: 'Breed',
+                accessor: (item) => breedNameMap.get(item.breedId) || 'Unknown',
+                className: 'font-medium',
+              },
+              {
+                key: 'quantity',
+                header: 'Quantity',
+                render: (_, item) => (
+                  <span className={cn(
+                    'font-semibold',
+                    item.quantity < 0 ? 'text-red-600' : 'text-gray-900'
+                  )}>
+                    {item.quantity}
+                  </span>
+                ),
+              },
+            ] as TableColumn<Inventory & { breedName?: string }>[]}
+            data={inventory}
+            actions={[
+              {
+                label: 'View Details',
+                onClick: (item) => router.push(`${ROUTES.INVENTORY}/${item.breedId}`),
+                variant: 'outline',
+              },
+            ]}
+            emptyMessage={searchTerm ? 'No inventory found matching your search' : 'No inventory found'}
+            loadingComponent={<div className="flex items-center justify-center py-12"><LoadingSpinner size="lg" /></div>}
+            keyExtractor={(item) => item.id}
+          />
           
           {/* Pagination */}
           {isInventoryPaginated && inventoryPaginationData && (
@@ -238,11 +228,11 @@ export default function InventoryScreen() {
           )}
         </>
       ) : (
-        <Card>
-          <p className="text-gray-600 text-center py-8">
+        <div className="text-center py-8 bg-white rounded-lg shadow-md p-6">
+          <p className="text-gray-600">
             {searchTerm ? 'No inventory found matching your search' : 'No inventory found'}
           </p>
-        </Card>
+        </div>
       )}
     </div>
   )

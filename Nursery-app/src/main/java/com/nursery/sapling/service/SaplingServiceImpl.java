@@ -124,7 +124,9 @@ public class SaplingServiceImpl implements SaplingService {
     public SaplingResponseDTO update(String id, SaplingRequestDTO request) {
         SaplingDocument sapling = findByIdEntity(id);
         
-        // Validate nursery exists
+        // NOTE: nurseryId from request is validated but NOT updated
+        // Key ID fields (nurseryId, saplingId, breedId, inventoryId, transactionId) are immutable in update operations
+        // Validate nursery exists (used for validation only, not for updating)
         nurseryService.validateExists(request.getNurseryId());
         
         // Check duplicate name (excluding current sapling)
@@ -135,6 +137,7 @@ public class SaplingServiceImpl implements SaplingService {
             throw new ValidationException("Sapling name already exists in this nursery");
         }
         
+        // Explicitly DO NOT update: sapling.setNurseryId() - ID fields are immutable
         sapling.setName(request.getName());
         sapling.setDescription(request.getDescription());
         sapling.setImageUrl(request.getImageUrl());

@@ -9,7 +9,8 @@ import { breedApi } from './api/breedApi'
 import { saplingApi } from '@/screens/saplings/api/saplingApi'
 import { useNursery } from '@/contexts/NurseryContext'
 import { useToast } from '@/components/Toaster/useToast'
-import { Button } from '@/components/Button'
+import { ResponsiveFormActions } from '@/components/ResponsiveFormActions'
+import { IconButton } from '@/components/IconButton'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { Dropdown, DropdownOption } from '@/components/Dropdown'
@@ -248,11 +249,15 @@ export default function BreedFormScreen() {
   
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" onClick={() => router.push(ROUTES.BREEDS)}>
-          ← Back to Breeds
-        </Button>
-        <h1 className="text-3xl font-bold text-gray-900">
+      <div className="flex items-center gap-3 sm:gap-4">
+        <IconButton
+          action="back"
+          onClick={() => router.push(ROUTES.BREEDS)}
+          label="Back to Breeds"
+          showLabel={false}
+          size="md"
+        />
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
           {isEditMode ? 'Edit Breed' : 'Add New Breed'}
         </h1>
       </div>
@@ -328,22 +333,24 @@ export default function BreedFormScreen() {
             error={errors.imageUrl?.message}
           />
 
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push(ROUTES.BREEDS)}
-            >
-              Cancel
-            </Button>
-            <Button
+          <ResponsiveFormActions
+            onCancel={() => router.push(ROUTES.BREEDS)}
+            saveLabel={isEditMode ? 'Update Breed' : 'Create Breed'}
+            cancelLabel="Cancel"
+            isSubmitting={isSubmitting}
+            isDisabled={isSubmitting}
+          >
+            <IconButton
+              action="save"
               type="submit"
+              variant="primary"
+              size="md"
+              label={isEditMode ? 'Update Breed' : 'Create Breed'}
               disabled={isSubmitting}
               isLoading={isSubmitting}
-            >
-              {isEditMode ? 'Update Breed' : 'Create Breed'}
-            </Button>
-          </div>
+              className="w-full sm:w-auto sm:ml-auto"
+            />
+          </ResponsiveFormActions>
         </form>
       </Card>
     </div>

@@ -11,13 +11,13 @@ public abstract class BaseSoftDeletableDocument extends BaseDocument {
     
     private Boolean isDeleted = false;
     
-    private Long deletedBy;
+    private String deletedBy;
     
     private LocalDateTime deletedAt;
     
     public void softDelete() {
         setIsDeleted(true);
-        setDeletedBy(com.nursery.common.util.SecurityUtil.getCurrentUserId());
+        setDeletedBy(com.nursery.common.util.SecurityUtil.getCurrentUserIdAsString());
         setDeletedAt(LocalDateTime.now());
         onUpdate();
     }

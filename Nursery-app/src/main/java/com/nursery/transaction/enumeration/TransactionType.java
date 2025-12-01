@@ -4,7 +4,6 @@ public enum TransactionType {
     SELL,
     PLANTED,
     ADJUST,
-    RECEIVE,
     COMPENSATION
 }
 

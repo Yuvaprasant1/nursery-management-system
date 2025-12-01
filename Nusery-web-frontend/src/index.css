@@ -20,9 +20,22 @@
 
 body {
   font-family: var(--font-family);
-  font-size: var(--font-size-base);
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mobile-first responsive font sizing */
+@media (min-width: 640px) {
+  body {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    font-size: var(--font-size-base);
+  }
 }
 
 /* Modern UI Enhancements */

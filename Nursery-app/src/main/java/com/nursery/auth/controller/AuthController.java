@@ -14,10 +14,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -41,7 +43,9 @@ public class AuthController {
             description = "Rate limit exceeded")
     })
     public ResponseEntity<ApiResponse<AuthResponseDTO>> login(@Valid @RequestBody LoginRequestDTO request) {
+        log.debug("REST request to login user with phone={}", request.getPhone());
         AuthResponseDTO response = authService.login(request);
+        log.info("User login successful for phone={}", request.getPhone());
         return ResponseEntity.status(HttpStatus.OK)
             .body(ApiResponse.success("Login successful", response));
     }
@@ -61,7 +65,9 @@ public class AuthController {
             description = "Rate limit exceeded")
     })
     public ResponseEntity<ApiResponse<AuthResponseDTO>> signup(@Valid @RequestBody SignupRequestDTO request) {
+        log.debug("REST request to signup user with phone={}", request.getPhone());
         AuthResponseDTO response = authService.signup(request);
+        log.info("User signup successful for phone={}", request.getPhone());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success("Signup successful. Nursery configured automatically.", response));
     }
@@ -81,6 +87,7 @@ public class AuthController {
             description = "Rate limit exceeded")
     })
     public ResponseEntity<ApiResponse<AuthResponseDTO>> generateToken(@Valid @RequestBody GenerateTokenRequestDTO request) {
+        log.debug("REST request to generate token for phone={}", request.getPhone());
         AuthResponseDTO response = authService.generateToken(request);
         return ResponseEntity.status(HttpStatus.OK)
             .body(ApiResponse.success("Token generated successfully", response));
@@ -99,6 +106,7 @@ public class AuthController {
     })
     public ResponseEntity<ApiResponse<AuthResponseDTO>> getCurrentUser() {
         String phone = SecurityUtil.getCurrentUserPhone();
+        log.debug("REST request to get current user for phone={}", phone);
         AuthResponseDTO response = authService.getCurrentUser(phone);
         return ResponseEntity.ok(ApiResponse.success(response));
     }

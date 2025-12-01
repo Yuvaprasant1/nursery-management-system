@@ -18,3 +18,9 @@ export interface Transaction {
   updatedAt: string
 }
 
+export interface TransactionRequest {
+  delta: number
+  type: TransactionType
+  reason?: string
+}
+

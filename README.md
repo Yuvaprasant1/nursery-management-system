@@ -17,7 +17,8 @@ The Nursery Management System is designed to help nursery owners and managers:
 - **Plant Management**: Organize plants into categories with detailed information
 - **Breed Management**: Track different breeds/varieties of plants with pricing and details
 - **Inventory Tracking**: Real-time inventory management with automatic quantity tracking
-- **Transaction Management**: Record sales, purchases, adjustments, and planting activities
+- **Transaction Management**: Record sales, purchases, adjustments, and planting activities with edit capability and inventory validation
+- **Payment Management**: Track payments associated with transactions (create, edit, delete payments) with integrated payment details view
 - **Dashboard Analytics**: View summary statistics and recent transactions
 - **Soft Delete**: All deletions are soft-deleted with audit trails for data integrity
 - **Multi-Nursery Support**: Manage multiple nursery locations
@@ -43,9 +44,8 @@ Nursery
 
 ### Transaction Types
 - **SELL**: Selling items (reduces inventory)
-- **PLANTED**: Planting items (reduces inventory)
+- **PLANTED**: Planting items (increases inventory)
 - **ADJUST**: Manual adjustment (can increase or decrease)
-- **RECEIVE**: Receiving new stock (increases inventory)
 - **COMPENSATION**: Auto-created for undo/delete operations (reverses original)
 
 ## 🛠️ Technology Stack
@@ -260,8 +260,16 @@ Next.js automatically loads environment files based on `NODE_ENV`:
 - `GET /transactions?breedId={id}` - List transactions by breed
 - `GET /transactions/breed/{breedId}` - Get transactions for breed
 - `GET /transactions/{id}` - Get transaction details
+- `PUT /transactions/{id}` - Update transaction
 - `POST /transactions/{id}/undo` - Undo a transaction
 - `POST /transactions/{id}/soft-delete` - Soft delete transaction
+
+### Payments
+- `GET /payments/transaction/{transactionId}` - Get payments for a transaction
+- `GET /payments/{id}` - Get payment details
+- `POST /payments/transaction/{transactionId}` - Create payment for transaction
+- `PUT /payments/{id}` - Update payment
+- `POST /payments/{id}/soft-delete` - Soft delete payment
 
 **Note**: All endpoints require JWT authentication except `/auth/login`
 

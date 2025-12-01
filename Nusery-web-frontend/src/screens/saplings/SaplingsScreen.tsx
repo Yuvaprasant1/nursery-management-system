@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { saplingApi } from './api/saplingApi'
+import { ResponsiveListCard } from '@/components/ResponsiveListCard'
+import { IconButton } from '@/components/IconButton'
 import { Sapling } from './models/types'
 import { useConfirmationDialog } from '@/components/ConfirmationDialog/useConfirmationDialog'
 import { useToast } from '@/components/Toaster/useToast'
 import { useNursery } from '@/contexts/NurseryContext'
-import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { Pagination } from '@/components/Pagination/Pagination'
@@ -110,14 +111,14 @@ export default function SaplingsScreen() {
   
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold text-gray-900">Saplings</h1>
-        <Button 
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Saplings</h1>
+        <IconButton
+          action="add"
           onClick={() => router.push('/saplings/new')}
-          className="shadow-md hover:shadow-lg transition-shadow"
-        >
-          Add Sapling
-        </Button>
+          label="Add Sapling"
+          size="md"
+        />
       </div>
       
       {/* Search Bar */}
@@ -137,42 +138,34 @@ export default function SaplingsScreen() {
         </div>
       ) : saplings && saplings.length > 0 ? (
         <>
-          <div className="grid gap-4">
+          <div className="space-y-3 sm:space-y-4">
             {saplings.map((sapling) => (
-              <Card key={sapling.id} className="p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{sapling.name}</h3>
-                    {sapling.description && (
-                      <p className="text-sm text-gray-600 mt-1">{sapling.description}</p>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push(`/saplings/${sapling.id}`)}
-                    >
-                      View
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push(`/saplings/${sapling.id}/edit`)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDelete(sapling.id, sapling.name)}
-                      disabled={isDeleting}
-                    >
-                      {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+              <ResponsiveListCard
+                key={sapling.id}
+                title={sapling.name}
+                description={sapling.description}
+                actions={[
+                  {
+                    action: 'view',
+                    label: 'View',
+                    onClick: () => router.push(`/saplings/${sapling.id}`),
+                    variant: 'outline',
+                  },
+                  {
+                    action: 'edit',
+                    label: 'Edit',
+                    onClick: () => router.push(`/saplings/${sapling.id}/edit`),
+                    variant: 'outline',
+                  },
+                  {
+                    action: 'delete',
+                    label: isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE,
+                    onClick: () => handleDelete(sapling.id, sapling.name),
+                    variant: 'danger',
+                    disabled: isDeleting,
+                  },
+                ]}
+              />
             ))}
           </div>
           

@@ -82,9 +82,9 @@ export default function LoginScreen() {
       return
     }
 
-    // Navigate immediately - contexts will load data in background
-    router.replace(ROUTES.DASHBOARD)
-    setIsLoading(false)
+      // Navigate immediately - contexts will load data in background
+      router.replace(ROUTES.DASHBOARD)
+      setIsLoading(false)
   }, [user, router])
 
   return (

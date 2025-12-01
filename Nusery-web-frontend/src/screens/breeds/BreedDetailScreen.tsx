@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { breedApi } from './api/breedApi'
 import { saplingApi } from '@/screens/saplings/api/saplingApi'
-import { Card } from '@/components/Card'
-import { Button } from '@/components/Button'
+import { ResponsiveDetailHeader, ResponsiveDetailCard, ResponsiveDetailGrid } from '@/components/ResponsiveDetailCard'
 import { LoadingState } from '@/components/Loading/LoadingState'
 import { ErrorState } from '@/components/Error/ErrorState'
 import { useConfirmationDialog } from '@/components/ConfirmationDialog/useConfirmationDialog'
@@ -19,6 +18,7 @@ import { Sapling } from '@/screens/saplings/models/types'
 export default function BreedDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { showConfirmation } = useConfirmationDialog()
   const toast = useToast()
   const [isDeleting, setIsDeleting] = useState(false)
@@ -136,91 +136,75 @@ export default function BreedDetailScreen() {
     )
   }
 
+  const handleBack = () => {
+    const from = searchParams.get('from')
+    const inventoryBreedId = searchParams.get('inventoryBreedId')
+
+    if (from === 'inventory' && inventoryBreedId) {
+      router.push(`${ROUTES.INVENTORY}/${inventoryBreedId}`)
+    } else {
+      router.push(ROUTES.BREEDS)
+    }
+  }
+
   return (
-    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => router.push(ROUTES.BREEDS)}>
-            ← Back to Breeds
-          </Button>
-          <h1 className="text-3xl font-bold text-gray-900">{breed.name}</h1>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`${ROUTES.BREEDS}/${breed.id}/edit`)}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="danger"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4 sm:space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
+      <ResponsiveDetailHeader
+        title={breed.name}
+        backAction={{
+          label: 'Back',
+          onClick: handleBack,
+        }}
+        actions={[
+          {
+            action: 'edit',
+            label: 'Edit',
+            onClick: () => router.push(`${ROUTES.BREEDS}/${breed.id}/edit`),
+            variant: 'outline',
+          },
+          {
+            action: 'delete',
+            label: isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE,
+            onClick: handleDelete,
+            variant: 'danger',
+            disabled: isDeleting,
+          },
+        ]}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card title="Basic Information">
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-500">Name</label>
-              <p className="text-lg font-semibold text-gray-900 mt-1">{breed.name}</p>
-            </div>
-            {breed.description && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Description</label>
-                <p className="text-gray-900 mt-1">{breed.description}</p>
-              </div>
-            )}
-            <div>
-              <label className="text-sm font-medium text-gray-500">Sapling</label>
-              <p className="text-gray-900 mt-1">{sapling?.name || 'Loading...'}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Mode</label>
-              <p className="text-gray-900 mt-1">{breed.mode || 'INDIVIDUAL'}</p>
-            </div>
-            {breed.mode === 'SLOT' && breed.itemsPerSlot && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Items Per Slot</label>
-                <p className="text-gray-900 mt-1">{breed.itemsPerSlot}</p>
-              </div>
-            )}
-          </div>
-        </Card>
+      <ResponsiveDetailGrid columns={{ mobile: 1, tablet: 1, desktop: 2 }}>
+        <ResponsiveDetailCard
+          title="Basic Information"
+          sections={[
+            { label: 'Name', value: breed.name },
+            ...(breed.description ? [{ label: 'Description', value: breed.description }] : []),
+            { label: 'Sapling', value: sapling?.name || 'Loading...' },
+            { label: 'Mode', value: breed.mode || 'INDIVIDUAL' },
+            ...(breed.mode === 'SLOT' && breed.itemsPerSlot 
+              ? [{ label: 'Items Per Slot', value: breed.itemsPerSlot.toString() }] 
+              : []),
+          ]}
+        />
 
-        <Card title="Additional Information">
-          <div className="space-y-4">
-            {breed.imageUrl && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Image</label>
-                <div className="mt-2">
-                  <img
-                    src={breed.imageUrl}
-                    alt={breed.name}
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                </div>
-              </div>
-            )}
-            <div>
-              <label className="text-sm font-medium text-gray-500">Created At</label>
-              <p className="text-gray-900 mt-1">
-                {new Date(breed.createdAt).toLocaleString()}
-              </p>
+        <ResponsiveDetailCard
+          title="Additional Information"
+          sections={[
+            { label: 'Created At', value: new Date(breed.createdAt).toLocaleString() },
+            { label: 'Last Updated', value: new Date(breed.updatedAt).toLocaleString() },
+          ]}
+        >
+          {breed.imageUrl && (
+            <div className="mt-4">
+              <label className="text-xs sm:text-sm font-medium text-gray-500 block mb-2">Image</label>
+              <img
+                src={breed.imageUrl}
+                alt={breed.name}
+                className="w-full h-48 object-cover rounded-lg"
+              />
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Last Updated</label>
-              <p className="text-gray-900 mt-1">
-                {new Date(breed.updatedAt).toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
+          )}
+        </ResponsiveDetailCard>
+      </ResponsiveDetailGrid>
     </div>
   )
 }

@@ -14,11 +14,11 @@ public abstract class BaseDocument {
     
     private LocalDateTime createdAt;
     
-    private Long createdBy;
+    private String createdBy;
     
     private LocalDateTime updatedAt;
     
-    private Long updatedBy;
+    private String updatedBy;
     
     protected void onCreate() {
         if (createdAt == null) {
@@ -28,16 +28,16 @@ public abstract class BaseDocument {
             updatedAt = LocalDateTime.now();
         }
         if (createdBy == null) {
-            createdBy = SecurityUtil.getCurrentUserId();
+            createdBy = SecurityUtil.getCurrentUserIdAsString();
         }
         if (updatedBy == null) {
-            updatedBy = SecurityUtil.getCurrentUserId();
+            updatedBy = SecurityUtil.getCurrentUserIdAsString();
         }
     }
     
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
-        updatedBy = SecurityUtil.getCurrentUserId();
+        updatedBy = SecurityUtil.getCurrentUserIdAsString();
     }
 }
 

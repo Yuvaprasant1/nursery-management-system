@@ -14,10 +14,17 @@ import { Pagination } from '@/components/Pagination/Pagination'
 import { PaginatedResponse } from '@/api/types'
 import { LoadingSpinner } from '@/components/Loading/LoadingSpinner'
 import { getErrorMessage } from '@/utils/errors'
-import { ButtonAction, ConfirmationVariant, TransactionType } from '@/enums'
+import { ButtonAction, ConfirmationVariant, ErrorMessage, SuccessMessage, TransactionType, UIText } from '@/enums'
 import { Transaction } from './models/types'
+import { Sapling } from '@/screens/saplings/models/types'
+import { Breed } from '@/screens/breeds/models/types'
+import { saplingApi } from '@/screens/saplings/api/saplingApi'
+import { SaplingFilter } from '@/components/Filter/SaplingFilter'
+import { BreedFilter } from '@/components/Filter/BreedFilter'
 import { formatDateTime } from '@/utils/timeUtils'
 import { cn } from '@/utils/cn'
+import { Eye, Trash2 } from 'lucide-react'
+import { Tooltip } from '@/components/Tooltip'
 export default function TransactionsScreen() {
   const [currentPage, setCurrentPage] = useState(0)
   const [pageSize, setPageSize] = useState(20)
@@ -31,23 +38,38 @@ export default function TransactionsScreen() {
   const [transactionsData, setTransactionsData] = useState<Transaction[] | PaginatedResponse<Transaction> | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   
+  
   // State for breeds API data
   const [breedsData, setBreedsData] = useState<any>(null)
+
+  // State for saplings API data
+  const [saplingsData, setSaplingsData] = useState<Sapling[] | PaginatedResponse<Sapling> | null>(null)
+
+  // Filter state
+  const [selectedSapling, setSelectedSapling] = useState<Sapling | null>(null)
+  const [selectedBreed, setSelectedBreed] = useState<Breed | null>(null)
   
-  // Fetch transactions function (for manual refetch)
+  
+  // Fetch transactions function (single source of truth for data loading)
   const fetchTransactions = useCallback(async () => {
     if (!nursery?.id) return
     
     setIsLoading(true)
     try {
-      const data = await transactionApi.getTransactions(undefined, nursery.id, currentPage, pageSize)
+      const data = await transactionApi.getTransactions(
+        selectedBreed?.id,
+        nursery.id,
+        currentPage,
+        pageSize,
+        selectedSapling?.id
+      )
       setTransactionsData(data)
     } catch (err) {
-      toast.error(getErrorMessage(err) || 'Failed to load transactions')
+      toast.error(getErrorMessage(err) || ErrorMessage.UNEXPECTED_ERROR_RETRY)
     } finally {
       setIsLoading(false)
     }
-  }, [nursery?.id, currentPage, pageSize]) // Removed toast from dependencies - it's stable
+  }, [nursery?.id, currentPage, pageSize, selectedBreed?.id, selectedSapling?.id]) // Removed toast from dependencies - it's stable
 
   // Fetch breeds function
   const fetchBreeds = useCallback(async () => {
@@ -60,34 +82,64 @@ export default function TransactionsScreen() {
       console.error('Failed to load breeds:', err)
     }
   }, [nursery?.id])
+
+  // Fetch saplings function
+  const fetchSaplings = useCallback(async () => {
+    if (!nursery?.id) return
+
+    try {
+      const data = await saplingApi.getAllSaplings(nursery.id)
+      setSaplingsData(data)
+    } catch (err) {
+      console.error('Failed to load saplings:', err)
+    }
+  }, [nursery?.id])
   
-  // Fetch data when dependencies change - use direct dependencies to prevent multiple calls
+  // Fetch data when dependencies change - delegate to fetch functions to avoid duplication
   useEffect(() => {
     if (!nursery?.id) return
-    
-    setIsLoading(true)
-    transactionApi.getTransactions(undefined, nursery.id, currentPage, pageSize)
-      .then(data => setTransactionsData(data))
-      .catch(err => toast.error(getErrorMessage(err) || 'Failed to load transactions'))
-      .finally(() => setIsLoading(false))
+
+    fetchTransactions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nursery?.id, currentPage, pageSize]) // Direct dependencies, toast is stable and doesn't need to be in deps
+  }, [nursery?.id, currentPage, pageSize, selectedBreed?.id, selectedSapling?.id]) // Direct dependencies, toast is stable and doesn't need to be in deps
   
   useEffect(() => {
     if (!nursery?.id) return
-    
-    breedApi.getBreeds(nursery.id)
-      .then(data => setBreedsData(data))
-      .catch(err => console.error('Failed to load breeds:', err))
+
+    fetchBreeds()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nursery?.id]) // Direct dependencies
-  
+
+  // Fetch saplings on mount
+  useEffect(() => {
+    if (!nursery?.id) return
+
+    fetchSaplings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nursery?.id])
+
+  // All filtering is now purely driven by in-memory state (no URL sync)
+
   // Create breed name map
   const breedNameMap = useMemo(() => {
     if (!breedsData) return new Map<string, string>()
     const breeds = Array.isArray(breedsData) ? breedsData : (breedsData as any).content || []
     return new Map(breeds.map((breed: any) => [breed.id, breed.name]))
   }, [breedsData])
+
+  const breeds: Breed[] = useMemo(() => {
+    if (!breedsData) return []
+    if (Array.isArray(breedsData)) return breedsData as Breed[]
+    if ('content' in breedsData) return (breedsData as PaginatedResponse<Breed>).content
+    return []
+  }, [breedsData])
+
+  const saplings: Sapling[] = useMemo(() => {
+    if (!saplingsData) return []
+    if (Array.isArray(saplingsData)) return saplingsData as Sapling[]
+    if ('content' in saplingsData) return (saplingsData as PaginatedResponse<Sapling>).content
+    return []
+  }, [saplingsData])
   
   // Check if response is paginated
   const isPaginated = transactionsData && 'content' in transactionsData
@@ -109,6 +161,26 @@ export default function TransactionsScreen() {
   const paginationData = isPaginated 
     ? (transactionsData as PaginatedResponse<Transaction>) 
     : null
+
+  const handleSaplingSelect = (sapling: Sapling | null) => {
+    setSelectedSapling(sapling)
+    // Reset breed if it no longer matches the selected sapling
+    if (sapling && selectedBreed && selectedBreed.saplingId !== sapling.id) {
+      setSelectedBreed(null)
+    }
+    setCurrentPage(0)
+  }
+
+  const handleBreedSelect = (breed: Breed | null) => {
+    setSelectedBreed(breed)
+    // If a breed is chosen, align the sapling filter with that breed
+    if (breed) {
+      const matchingSapling = saplings.find((s) => s.id === breed.saplingId) || null
+      setSelectedSapling(matchingSapling)
+    }
+    setCurrentPage(0)
+  }
+  
   
   const handleDelete = async (id: string) => {
     try {
@@ -186,7 +258,7 @@ export default function TransactionsScreen() {
         setIsDeleting(true)
         try {
           await transactionApi.softDeleteTransaction(id)
-          toast.success('Transaction deleted successfully')
+          toast.success(SuccessMessage.TRANSACTION_DELETED)
           fetchTransactions() // Refresh the list
         } catch (error) {
           // Error is handled by Axios interceptor
@@ -202,8 +274,47 @@ export default function TransactionsScreen() {
   
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
-      <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
-      
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Transactions</h1>
+
+      {/* Modern Filters */}
+      <Card className="p-3 border border-gray-200 bg-white/80 backdrop-blur-sm shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Filters
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Narrow down transactions by sapling and breed.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SaplingFilter
+              selectedSapling={selectedSapling}
+              onSelect={handleSaplingSelect}
+              saplings={saplings}
+            />
+            <BreedFilter
+              breeds={breeds}
+              selectedBreed={selectedBreed}
+              onSelect={handleBreedSelect}
+            />
+            {(selectedSapling || selectedBreed) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSapling(null)
+                  setSelectedBreed(null)
+                  setCurrentPage(0)
+                }}
+                className="text-[11px] px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
+
       {isLoading ? (
         <div className="flex items-center justify-center min-h-[400px]">
           <LoadingSpinner size="lg" />
@@ -237,7 +348,7 @@ export default function TransactionsScreen() {
                             'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
                             isSell
                               ? 'bg-red-100 text-red-800'
-                              : transaction.type === TransactionType.RECEIVE || transaction.type === TransactionType.PLANTED
+                              : transaction.type === TransactionType.PLANTED
                               ? 'bg-green-100 text-green-800'
                               : transaction.type === TransactionType.ADJUST
                               ? 'bg-yellow-100 text-yellow-800'
@@ -261,22 +372,32 @@ export default function TransactionsScreen() {
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap text-sm">
                           <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => router.push(`/transactions/${transaction.id}`)}
-                            >
-                              View
-                            </Button>
-                            {transaction.type !== TransactionType.COMPENSATION && (
+                            <Tooltip content="View transaction" position="top">
                               <Button
-                                variant="danger"
+                                variant="outline"
                                 size="sm"
-                                onClick={() => handleDelete(transaction.id)}
-                                disabled={isDeleting}
+                                onClick={() => router.push(`/transactions/${transaction.id}`)}
+                                className="p-2"
+                                aria-label="View transaction"
                               >
-                                {isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE}
+                                <Eye className="w-4 h-4" />
                               </Button>
+                            </Tooltip>
+                            {transaction.type !== TransactionType.COMPENSATION && (
+                              <>
+                                <Tooltip content={isDeleting ? ButtonAction.DELETING : ButtonAction.DELETE} position="top">
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    onClick={() => handleDelete(transaction.id)}
+                                    disabled={isDeleting}
+                                    className="p-2"
+                                    aria-label="Delete transaction"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </Tooltip>
+                              </>
                             )}
                           </div>
                         </td>
@@ -305,9 +426,10 @@ export default function TransactionsScreen() {
         </>
       ) : (
         <Card>
-          <p className="text-gray-600 text-center py-8">No transactions found</p>
+          <p className="text-gray-600 text-center py-8">{UIText.NO_TRANSACTIONS_FOUND}</p>
         </Card>
       )}
+
     </div>
   )
 }

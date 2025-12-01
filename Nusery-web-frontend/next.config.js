@@ -17,11 +17,6 @@ const nextConfig = {
     const isProduction = process.env.NODE_ENV === 'production'
     const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
     
-    // Only log in development
-    if (!isProduction) {
-      console.log('[Next.js Config] API rewrites configured: /api/* →', backendUrl)
-    }
-    
     return [
       {
         source: '/api/:path*',
